@@ -9,6 +9,7 @@ import app.psykit.core.engine.PetEngine
 import app.psykit.core.model.PetState
 import app.psykit.core.model.Stage
 import app.psykit.data.PetRepository
+import app.psykit.sprites.SpriteNames
 import app.psykit.sprites.SpriteStore
 import app.psykit.sprites.SpriteVariant
 import app.psykit.steps.StepSensor
@@ -82,6 +83,22 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         else "Das Bild konnte nicht geladen werden."
         _spriteVersion.value++
     }
+    /** Mehrere Bilder auf einmal importieren und anhand der Dateinamen zuordnen. */
+    fun importPack(uris: List<Uri>) {
+        var ok = 0
+        val unknown = mutableListOf<String>()
+        uris.forEach { uri ->
+            val name = sprites.displayName(uri) ?: "?"
+            val target = SpriteNames.guess(name)
+            if (target != null && sprites.save(target.first, target.second, uri)) ok++ else unknown += name
+        }
+        _spriteVersion.value++
+        _message.value = buildString {
+            append("$ok Bild(er) importiert.")
+            if (unknown.isNotEmpty()) append(" Nicht zugeordnet: ${unknown.joinToString()}. Diese bitte einzeln setzen.")
+        }
+    }
+
     fun clearSprite(stage: Stage, variant: SpriteVariant) { sprites.clear(stage, variant); _spriteVersion.value++ }
 
     fun say(msg: String) { _message.value = msg }

@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import app.psykit.core.model.Mood
@@ -80,8 +81,49 @@ class SpriteStore(context: Context) {
         true
     }.getOrDefault(false)
 
+    /** Dateiname eines ausgewählten Bildes (für den Paket-Import). */
+    fun displayName(uri: Uri): String? = runCatching {
+        ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }.getOrNull()
+
     fun clear(stage: Stage, v: SpriteVariant) {
         file(stage, v).delete()
         cache.remove(key(stage, v))
+    }
+}
+
+/**
+ * Ordnet einen Dateinamen einer Stufe und Laune zu, z. B.
+ * „1-ei.png“, „2-baby.png“, „baby_traurig.png“, „Psykit 5-erwachsen.png“, „adult_sleeping.png“.
+ */
+object SpriteNames {
+    private val stageWords = mapOf(
+        Stage.EGG to setOf("1", "ei", "egg"),
+        Stage.BABY to setOf("2", "baby"),
+        Stage.CHILD to setOf("3", "kind", "child"),
+        Stage.TEEN to setOf("4", "jugendlich", "jugend", "teen"),
+        Stage.ADULT to setOf("5", "erwachsen", "adult"),
+    )
+    private val variantWords = mapOf(
+        SpriteVariant.SLEEPING to setOf("schlaeft", "schlafen", "schlaf", "schlafend", "sleeping", "sleep", "asleep"),
+        SpriteVariant.HAPPY to setOf("gluecklich", "froh", "happy", "freude"),
+        SpriteVariant.SAD to setOf("traurig", "sad"),
+        SpriteVariant.HUNGRY to setOf("hungrig", "hunger", "hungry"),
+        SpriteVariant.SICK to setOf("krank", "sick"),
+    )
+
+    fun guess(fileName: String): Pair<Stage, SpriteVariant>? {
+        val norm = fileName.lowercase()
+            .substringBeforeLast('.')
+            .replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+        val tokens = norm.split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }.toSet()
+        // erst Wörter (baby, kind …), dann Ziffern (1–5), damit „baby_1.png“ nicht als Ei zählt
+        val stage = stageWords.entries.firstOrNull { (_, words) -> words.any { !it[0].isDigit() && it in tokens } }?.key
+            ?: stageWords.entries.firstOrNull { (_, words) -> words.any { it[0].isDigit() && it in tokens } }?.key
+            ?: return null
+        val variant = variantWords.entries.firstOrNull { (_, words) -> words.any { it in tokens } }?.key ?: SpriteVariant.BASE
+        return stage to variant
     }
 }

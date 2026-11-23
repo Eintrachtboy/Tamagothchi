@@ -131,6 +131,14 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
         pending = null
     }
 
+    var importInfo by remember { mutableStateOf<String?>(null) }
+    val packPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) {
+            vm.importPack(uris)
+            importInfo = vm.message.value
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Einstellungen") },
@@ -145,6 +153,13 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
                         "„Normal“ wird immer benutzt, wenn für eine Laune kein eigenes Bild da ist. Ohne Bilder zeichnet die App die eingebaute Figur.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                Button(onClick = { packPicker.launch(arrayOf("image/*")) }) { Text("Bildpaket importieren …") }
+                Text(
+                    "Mehrere Bilder auf einmal auswählen. Zuordnung über den Dateinamen: Stufe (1-ei, 2-baby, 3-kind, 4-jugendlich, 5-erwachsen) " +
+                        "und optional Laune (schlaeft, gluecklich, traurig, hungrig, krank), z. B. „baby_traurig.png“.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                importInfo?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Stage.entries.forEach { st ->
                         FilterChip(selected = st == selectedStage, onClick = { selectedStage = st }, label = { Text(st.displayName) })

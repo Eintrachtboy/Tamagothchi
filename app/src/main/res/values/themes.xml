@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.Psykit" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#FFF6EEFB</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowBackground">#FFF6EEFB</item>
+    </style>
+</resources>

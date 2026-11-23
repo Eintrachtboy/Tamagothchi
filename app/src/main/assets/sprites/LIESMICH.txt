@@ -1,0 +1,4 @@
+Hier kannst du eigene Bilder fest in die App einbauen:
+egg.png, baby.png, child.png, teen.png, adult.png
+(PNG, am besten quadratisch mit transparentem Hintergrund, ca. 512x512).
+Einfacher geht es in der App selbst: Zahnrad > Eigene Bilder.

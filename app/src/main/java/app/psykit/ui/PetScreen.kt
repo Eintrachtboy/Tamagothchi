@@ -97,7 +97,7 @@ fun PetScreen(vm: PetViewModel) {
 
         PetScene(
             stage = s.stage, mood = s.mood, sleeping = s.sleeping, poops = s.poops, phase = phase,
-            custom = sprite?.image, customIsVariant = sprite?.exact == true && variant != SpriteVariant.BASE, petPulse = petPulse, onTapPet = vm::pet,
+            custom = sprite, customIsVariant = sprite?.exact == true && variant != SpriteVariant.BASE, petPulse = petPulse, onTapPet = vm::pet,
         )
 
         Text(

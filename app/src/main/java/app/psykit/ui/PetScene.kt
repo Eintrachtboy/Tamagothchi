@@ -32,7 +32,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -41,7 +40,16 @@ import androidx.compose.ui.unit.sp
 import app.psykit.core.engine.DayPhase
 import app.psykit.core.model.Mood
 import app.psykit.core.model.Stage
+import app.psykit.sprites.Sprite
+import android.graphics.ImageDecoder
+import android.graphics.drawable.AnimatedImageDrawable
+import android.widget.ImageView
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.viewinterop.AndroidView
+import kotlin.math.PI
+import kotlin.math.sin
 import kotlin.random.Random
+import kotlinx.coroutines.launch
 
 private fun skyColors(phase: DayPhase) = when (phase) {
     DayPhase.MORNING -> listOf(Color(0xFFFFD9C2), Color(0xFFFFF1E6))
@@ -57,7 +65,7 @@ fun PetScene(
     sleeping: Boolean,
     poops: Int,
     phase: DayPhase,
-    custom: ImageBitmap?,
+    custom: Sprite?,
     customIsVariant: Boolean,
     petPulse: Int,
     onTapPet: () -> Unit,
@@ -86,9 +94,17 @@ fun PetScene(
     )
     val zFloat by anim.animateFloat(0f, 1f, infiniteRepeatable(tween(2200, easing = LinearEasing)), label = "z")
 
+    val breath by anim.animateFloat(
+        -1f, 1f, infiniteRepeatable(tween(if (sleeping) 3400 else 2200), RepeatMode.Reverse), label = "breath",
+    )
+
     val hearts = remember { Animatable(1f) }
+    val hop = remember { Animatable(1f) }
     LaunchedEffect(petPulse) {
-        if (petPulse > 0) { hearts.snapTo(0f); hearts.animateTo(1f, tween(1300)) }
+        if (petPulse > 0) {
+            launch { hop.snapTo(0f); hop.animateTo(1f, tween(650)) }
+            hearts.snapTo(0f); hearts.animateTo(1f, tween(1300))
+        }
     }
     val stars = remember { List(28) { Offset(Random.nextFloat(), Random.nextFloat() * 0.6f) } }
     val night = phase == DayPhase.NIGHT
@@ -130,21 +146,49 @@ fun PetScene(
             for (i in 0 until poops) drawPoop(Offset(w * (0.14f + i * 0.11f), h * 0.93f), h * 0.07f)
         }
 
-        // Figur: eigenes Bild oder gezeichnete Standardfigur
+        // Figur: eigenes Bild (Standbild oder animiertes GIF/WebP) oder gezeichnete Standardfigur
         if (custom != null) {
-            Image(
-                bitmap = custom,
-                contentDescription = "Dein Tierchen",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(start = 60.dp, end = 60.dp, top = 40.dp, bottom = 14.dp)
-                    .graphicsLayer {
-                        translationY = -bob * (if (sleeping) 6f else 18f)
-                        if (stage == Stage.EGG) rotationZ = wobble * 8f
-                    }
-                    .alpha(if (sleeping && !customIsVariant) 0.75f else 1f),
-            )
+            // Bewegung je nach Laune: fröhlich hüpft höher, traurig/krank hängt tiefer und ruhiger
+            val amp = when {
+                sleeping -> 6f
+                mood == Mood.HAPPY -> 28f
+                mood == Mood.SAD || mood == Mood.SICK || mood == Mood.TIRED -> 7f
+                else -> 18f
+            }
+            val sink = if (mood == Mood.SAD || mood == Mood.SICK) 14f else 0f
+            val sway = when { sleeping -> 1f; mood == Mood.HAPPY -> 4f; else -> 2.5f }
+            val figure = Modifier
+                .fillMaxSize()
+                .padding(start = 60.dp, end = 60.dp, top = 40.dp, bottom = 14.dp)
+                .graphicsLayer {
+                    val jump = if (hop.value < 1f) sin(hop.value * PI.toFloat()) else 0f
+                    transformOrigin = TransformOrigin(0.5f, 1f)
+                    translationY = -bob * amp + sink - jump * 60f
+                    // Atmen: leicht strecken und stauchen
+                    val b = breath * (if (sleeping) 0.035f else 0.02f)
+                    scaleX = 1f - b + jump * 0.06f
+                    scaleY = 1f + b - jump * 0.04f
+                    rotationZ = if (stage == Stage.EGG) wobble * 8f else swing * sway
+                }
+                .alpha(if (sleeping && !customIsVariant) 0.75f else 1f)
+            val animFile = custom.animated
+            if (animFile != null) {
+                val drawable = remember(animFile, animFile.lastModified()) {
+                    runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(animFile)) }.getOrNull()
+                }
+                AndroidView(
+                    factory = { ctx -> ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_CENTER } },
+                    update = { iv ->
+                        if (iv.drawable !== drawable) {
+                            iv.setImageDrawable(drawable)
+                            (drawable as? AnimatedImageDrawable)?.start()
+                        }
+                    },
+                    modifier = figure,
+                )
+            } else if (custom.image != null) {
+                Image(bitmap = custom.image, contentDescription = "Dein Tierchen", contentScale = ContentScale.Fit, modifier = figure)
+            }
         } else {
             Canvas(Modifier.fillMaxSize().padding(top = 24.dp)) {
                 drawPsykit(stage, mood, blink, -bob * size.height * (if (sleeping) 0.015f else 0.04f), swing, wobble)

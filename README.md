@@ -41,7 +41,7 @@ EP gibt es fürs Kümmern, Spielen, Schritte und passiv für jede Stunde in gute
 
 ## Eigene Bilder
 
-In der App: **Zahnrad → Eigene Bilder** → Stufe wählen → Bilder setzen. Pro Stufe gibt es „Normal“ und die Laune-Varianten **Schläft, Glücklich, Traurig, Hungrig, Krank**. Die App wechselt automatisch zum passenden Bild; fehlt eine Variante, nimmt sie „Normal“. Am besten PNG mit transparentem Hintergrund.
+In der App: **Zahnrad → Eigene Bilder** → Stufe wählen → Bilder setzen. Pro Stufe gibt es „Normal“ und die Laune-Varianten **Schläft, Glücklich, Traurig, Hungrig, Krank**. Die App wechselt automatisch zum passenden Bild; fehlt eine Variante, nimmt sie „Normal“. Am besten PNG mit transparentem Hintergrund. **Animierte GIF- oder WebP-Dateien** werden ebenfalls abgespielt (z. B. blinzeln oder Schwanz bewegen). Standbilder bewegen sich automatisch: Schweben, Atmen, Neigen, Hüpfer beim Streicheln, je nach Laune lebhafter oder ruhiger.
 Mehrere Bilder auf einmal: **Bildpaket importieren** und alle markieren; die Zuordnung läuft über den Dateinamen (z. B. `1-ei.png`, `2-baby.png`, `baby_traurig.png`, `erwachsen_schlaeft.png`).
 Alternativ fest einbauen: PNGs unter `app/src/main/assets/sprites/`, z. B. `baby.png`, `baby_sleeping.png`, `adult_sad.png` (Endungen: `_sleeping`, `_happy`, `_sad`, `_hungry`, `_sick`).
 

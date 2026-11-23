@@ -149,7 +149,7 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
                 HorizontalDivider()
                 Text("Eigene Bilder", fontWeight = FontWeight.Bold)
                 Text(
-                    "Wähle eine Stufe und setze dann ihre Bilder (am besten PNG mit transparentem Hintergrund). " +
+                    "Wähle eine Stufe und setze dann ihre Bilder (PNG mit transparentem Hintergrund, oder animiertes GIF/WebP). " +
                         "„Normal“ wird immer benutzt, wenn für eine Laune kein eigenes Bild da ist. Ohne Bilder zeichnet die App die eingebaute Figur.",
                     style = MaterialTheme.typography.bodySmall,
                 )

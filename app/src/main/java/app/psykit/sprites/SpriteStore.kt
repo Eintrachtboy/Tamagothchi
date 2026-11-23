@@ -33,8 +33,11 @@ enum class SpriteVariant(val label: String, val suffix: String) {
     }
 }
 
-/** Ein geladenes Bild und ob es genau die gewünschte Variante ist (oder nur das Ersatzbild). */
-data class Sprite(val image: ImageBitmap, val exact: Boolean)
+/**
+ * Ein geladenes Bild: entweder Standbild ([image]) oder animierte GIF/WebP-Datei ([animated]).
+ * [exact] = genau die gewünschte Variante (sonst das Ersatzbild „Normal“).
+ */
+data class Sprite(val image: ImageBitmap?, val animated: File?, val exact: Boolean)
 
 /**
  * Austauschbare Grafiken: Für jede Stufe und Laune kann ein eigenes Bild gewählt werden.
@@ -51,8 +54,9 @@ class SpriteStore(context: Context) {
 
     private fun key(stage: Stage, v: SpriteVariant) = stage.name.lowercase() + v.suffix
     private fun file(stage: Stage, v: SpriteVariant) = File(dir, key(stage, v) + ".png")
+    private fun animFile(stage: Stage, v: SpriteVariant) = File(dir, key(stage, v) + ".anim")
 
-    fun hasCustom(stage: Stage, v: SpriteVariant = SpriteVariant.BASE) = file(stage, v).exists()
+    fun hasCustom(stage: Stage, v: SpriteVariant = SpriteVariant.BASE) = file(stage, v).exists() || animFile(stage, v).exists()
 
     private fun loadExact(stage: Stage, v: SpriteVariant): ImageBitmap? = cache.getOrPut(key(stage, v)) {
         val f = file(stage, v)
@@ -61,13 +65,32 @@ class SpriteStore(context: Context) {
         bmp?.asImageBitmap()
     }
 
-    fun load(stage: Stage, v: SpriteVariant = SpriteVariant.BASE): Sprite? {
-        loadExact(stage, v)?.let { return Sprite(it, true) }
-        if (v != SpriteVariant.BASE) loadExact(stage, SpriteVariant.BASE)?.let { return Sprite(it, false) }
-        return null
+    private fun loadAny(stage: Stage, v: SpriteVariant, exact: Boolean): Sprite? {
+        val anim = animFile(stage, v)
+        if (anim.exists()) return Sprite(null, anim, exact)
+        return loadExact(stage, v)?.let { Sprite(it, null, exact) }
+    }
+
+    fun load(stage: Stage, v: SpriteVariant = SpriteVariant.BASE): Sprite? =
+        loadAny(stage, v, true) ?: if (v != SpriteVariant.BASE) loadAny(stage, SpriteVariant.BASE, false) else null
+
+    /** Animierte GIF/WebP unverändert übernehmen, damit die Animation erhalten bleibt. */
+    private fun trySaveAnimated(stage: Stage, v: SpriteVariant, uri: Uri): Boolean {
+        val mime = ctx.contentResolver.getType(uri) ?: ""
+        if (mime != "image/gif" && mime != "image/webp") return false
+        val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return false
+        if (bytes.size > 20 * 1024 * 1024) return false
+        val drawable = runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) }.getOrNull()
+        if (drawable !is android.graphics.drawable.AnimatedImageDrawable) return false
+        animFile(stage, v).writeBytes(bytes)
+        file(stage, v).delete()
+        cache.remove(key(stage, v))
+        return true
     }
 
     fun save(stage: Stage, v: SpriteVariant, uri: Uri): Boolean = runCatching {
+        if (trySaveAnimated(stage, v, uri)) return true
+        animFile(stage, v).delete()
         val src = ImageDecoder.decodeBitmap(ImageDecoder.createSource(ctx.contentResolver, uri)) { d, info, _ ->
             d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
             val max = maxOf(info.size.width, info.size.height)
@@ -90,6 +113,7 @@ class SpriteStore(context: Context) {
 
     fun clear(stage: Stage, v: SpriteVariant) {
         file(stage, v).delete()
+        animFile(stage, v).delete()
         cache.remove(key(stage, v))
     }
 }

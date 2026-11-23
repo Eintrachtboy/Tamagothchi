@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -37,6 +39,7 @@ import app.psykit.core.battle.BattleStats
 import app.psykit.core.battle.PetCombatant
 import app.psykit.core.model.PetState
 import app.psykit.core.model.Stage
+import app.psykit.sprites.SpriteVariant
 import kotlin.random.Random
 
 /** Minispiel „Wohin schaut es?“: 5 Runden links oder rechts raten. */
@@ -117,14 +120,15 @@ fun StatsDialog(s: PetState, onDismiss: () -> Unit) {
 @Composable
 fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(s.name) }
-    var pendingStage by remember { mutableStateOf<Stage?>(null) }
+    var pending by remember { mutableStateOf<Pair<Stage, SpriteVariant>?>(null) }
+    var selectedStage by remember { mutableStateOf(if (s.stage == Stage.EGG) Stage.BABY else s.stage) }
     var confirmReset by remember { mutableStateOf(false) }
     val spriteVersion by vm.spriteVersion.collectAsState()
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        val stage = pendingStage
-        if (uri != null && stage != null) vm.setSprite(stage, uri)
-        pendingStage = null
+        val target = pending
+        if (uri != null && target != null) vm.setSprite(target.first, target.second, uri)
+        pending = null
     }
 
     AlertDialog(
@@ -137,18 +141,25 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
                 HorizontalDivider()
                 Text("Eigene Bilder", fontWeight = FontWeight.Bold)
                 Text(
-                    "Wähle für jede Stufe ein eigenes Bild (am besten PNG mit transparentem Hintergrund). Ohne Bild wird die eingebaute Figur gezeichnet.",
+                    "Wähle eine Stufe und setze dann ihre Bilder (am besten PNG mit transparentem Hintergrund). " +
+                        "„Normal“ wird immer benutzt, wenn für eine Laune kein eigenes Bild da ist. Ohne Bilder zeichnet die App die eingebaute Figur.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Stage.entries.forEach { stage ->
-                    val has = remember(spriteVersion) { vm.sprites.hasCustom(stage) }
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Stage.entries.forEach { st ->
+                        FilterChip(selected = st == selectedStage, onClick = { selectedStage = st }, label = { Text(st.displayName) })
+                    }
+                }
+                val variants = if (selectedStage == Stage.EGG) listOf(SpriteVariant.BASE) else SpriteVariant.entries
+                variants.forEach { v ->
+                    val has = remember(spriteVersion, selectedStage, v) { vm.sprites.hasCustom(selectedStage, v) }
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stage.displayName + if (has) " ✓" else "", Modifier.width(96.dp))
+                        Text(v.label + if (has) " ✓" else "", Modifier.width(96.dp))
                         TextButton(onClick = {
-                            pendingStage = stage
+                            pending = selectedStage to v
                             picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
                         }) { Text("Bild wählen") }
-                        if (has) TextButton(onClick = { vm.clearSprite(stage) }) { Text("Standard") }
+                        if (has) TextButton(onClick = { vm.clearSprite(selectedStage, v) }) { Text("Entfernen") }
                     }
                 }
                 HorizontalDivider()
@@ -166,4 +177,3 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
         confirmButton = { TextButton(onClick = onDismiss) { Text("Fertig") } },
     )
 }
-

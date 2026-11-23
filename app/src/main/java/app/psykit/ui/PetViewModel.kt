@@ -10,6 +10,7 @@ import app.psykit.core.model.PetState
 import app.psykit.core.model.Stage
 import app.psykit.data.PetRepository
 import app.psykit.sprites.SpriteStore
+import app.psykit.sprites.SpriteVariant
 import app.psykit.steps.StepSensor
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,11 +77,12 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     fun rename(name: String) = repo.update { s, _ -> PetEngine.rename(s, name) to Unit }
     fun reset(name: String) { repo.reset(name); _message.value = "Ein neues Ei! Es schlüpft in ein paar Minuten." }
 
-    fun setSprite(stage: Stage, uri: Uri) {
-        _message.value = if (sprites.save(stage, uri)) "Neues Bild für „${stage.displayName}“ gesetzt." else "Das Bild konnte nicht geladen werden."
+    fun setSprite(stage: Stage, variant: SpriteVariant, uri: Uri) {
+        _message.value = if (sprites.save(stage, variant, uri)) "Neues Bild für „${stage.displayName} · ${variant.label}“ gesetzt."
+        else "Das Bild konnte nicht geladen werden."
         _spriteVersion.value++
     }
-    fun clearSprite(stage: Stage) { sprites.clear(stage); _spriteVersion.value++ }
+    fun clearSprite(stage: Stage, variant: SpriteVariant) { sprites.clear(stage, variant); _spriteVersion.value++ }
 
     fun say(msg: String) { _message.value = msg }
 

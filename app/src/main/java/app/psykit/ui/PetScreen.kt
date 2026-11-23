@@ -48,6 +48,7 @@ import app.psykit.core.engine.DayPhase
 import app.psykit.core.engine.LevelSystem
 import app.psykit.core.model.PetState
 import app.psykit.core.model.Stage
+import app.psykit.sprites.SpriteVariant
 import java.util.concurrent.TimeUnit
 
 @Composable
@@ -81,7 +82,8 @@ fun PetScreen(vm: PetViewModel) {
     }
 
     val phase = DayPhase.at(s.lastUpdate, vm.repo.zone)
-    val custom = remember(s.stage, spriteVersion) { vm.sprites.load(s.stage) }
+    val variant = SpriteVariant.forMood(s.mood)
+    val sprite = remember(s.stage, variant, spriteVersion) { vm.sprites.load(s.stage, variant) }
 
     Column(
         Modifier
@@ -95,7 +97,7 @@ fun PetScreen(vm: PetViewModel) {
 
         PetScene(
             stage = s.stage, mood = s.mood, sleeping = s.sleeping, poops = s.poops, phase = phase,
-            custom = custom, petPulse = petPulse, onTapPet = vm::pet,
+            custom = sprite?.image, customIsVariant = sprite?.exact == true && variant != SpriteVariant.BASE, petPulse = petPulse, onTapPet = vm::pet,
         )
 
         Text(

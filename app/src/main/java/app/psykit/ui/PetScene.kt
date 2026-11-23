@@ -58,6 +58,7 @@ fun PetScene(
     poops: Int,
     phase: DayPhase,
     custom: ImageBitmap?,
+    customIsVariant: Boolean,
     petPulse: Int,
     onTapPet: () -> Unit,
     modifier: Modifier = Modifier,
@@ -142,7 +143,7 @@ fun PetScene(
                         translationY = -bob * (if (sleeping) 6f else 18f)
                         if (stage == Stage.EGG) rotationZ = wobble * 8f
                     }
-                    .alpha(if (sleeping) 0.75f else 1f),
+                    .alpha(if (sleeping && !customIsVariant) 0.75f else 1f),
             )
         } else {
             Canvas(Modifier.fillMaxSize().padding(top = 24.dp)) {

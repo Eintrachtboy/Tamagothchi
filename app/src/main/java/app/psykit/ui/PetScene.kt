@@ -121,6 +121,11 @@ fun PetScene(
             }
             val groundColor = if (night) Color(0xFF2A2452) else Color(0xFFCDEBC0)
             drawOval(groundColor, topLeft = Offset(-w * 0.2f, h * 0.8f), size = androidx.compose.ui.geometry.Size(w * 1.4f, h * 0.5f))
+            if (custom != null) {
+                // Schatten unter eigenen Bildern, wird kleiner, wenn die Figur hochschwebt
+                val sw = w * 0.3f * (1f - 0.15f * bob)
+                drawOval(Color(0x26000000), topLeft = Offset(w / 2 - sw / 2, h * 0.935f), size = androidx.compose.ui.geometry.Size(sw, h * 0.045f))
+            }
             for (i in 0 until poops) drawPoop(Offset(w * (0.14f + i * 0.11f), h * 0.93f), h * 0.07f)
         }
 
@@ -134,7 +139,7 @@ fun PetScene(
                     .fillMaxSize()
                     .padding(start = 60.dp, end = 60.dp, top = 40.dp, bottom = 14.dp)
                     .graphicsLayer {
-                        translationY = -bob * 10f
+                        translationY = -bob * (if (sleeping) 6f else 18f)
                         if (stage == Stage.EGG) rotationZ = wobble * 8f
                     }
                     .alpha(if (sleeping) 0.75f else 1f),

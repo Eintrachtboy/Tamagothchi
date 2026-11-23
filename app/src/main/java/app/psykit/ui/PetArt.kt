@@ -172,8 +172,9 @@ fun DrawScope.drawPsykit(stage: Stage, mood: Mood, blink: Float, bob: Float, swi
         }
         if (mood == Mood.SAD || mood == Mood.SICK) {
             drawLine(
-                Line, Offset(ec.x - sign * eyeW * 0.6f, eyeY - eyeH * 0.65f),
-                Offset(ec.x + sign * eyeW * 0.5f, eyeY - eyeH * 0.85f), strokeWidth = hr * 0.05f, cap = StrokeCap.Round,
+                // innen höher als außen = traurig
+                Line, Offset(ec.x - sign * eyeW * 0.6f, eyeY - eyeH * 0.9f),
+                Offset(ec.x + sign * eyeW * 0.5f, eyeY - eyeH * 0.65f), strokeWidth = hr * 0.05f, cap = StrokeCap.Round,
             )
         }
     }

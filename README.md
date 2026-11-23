@@ -1,6 +1,6 @@
 # Psykit – ein Tamagotchi für dein Android-Handy
 
-Ein kleines virtuelles Haustier: **Lumi**, eine rosa Psycho-Katze mit Mondsichel auf der Stirn, Sternschweif und schwebender Psi-Kugel.
+Ein kleines virtuelles Haustier: **Lumi**, eine schlanke, schwebende rosa Psycho-Katze mit Luchs-Ohren, Fellkragen und Mondsicheln auf Stirn und Schweif.
 
 ## APK installieren
 

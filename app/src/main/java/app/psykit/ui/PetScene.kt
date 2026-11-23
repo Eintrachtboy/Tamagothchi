@@ -141,7 +141,7 @@ fun PetScene(
             )
         } else {
             Canvas(Modifier.fillMaxSize().padding(top = 24.dp)) {
-                drawPsykit(stage, mood, blink, -bob * size.height * 0.025f, swing, wobble)
+                drawPsykit(stage, mood, blink, -bob * size.height * (if (sleeping) 0.015f else 0.04f), swing, wobble)
             }
         }
 

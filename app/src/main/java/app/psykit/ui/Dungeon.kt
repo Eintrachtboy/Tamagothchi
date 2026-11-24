@@ -102,7 +102,7 @@ fun DungeonDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () ->
                     when {
                         run == null && s.lastRun != null -> RunResultView(s, onOk = { vm.clearLastRun() })
                         run == null -> FloorSelect(s, vm)
-                        run.battle != null -> BattleView(vm, s, run.battle, sprite)
+                        run.battle != null -> BattleView(vm, s, run.battle!!, sprite)
                         run.bridge -> BridgeView(vm, run)
                         run.event != null -> EventView(vm, s, run)
                         run.room == RoomType.REST -> RestView(vm, s, run)

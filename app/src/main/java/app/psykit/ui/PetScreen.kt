@@ -456,6 +456,9 @@ private fun gameInfo(k: GameKind) = when (k) {
     GameKind.MEMORY -> "Dreh Karten um und finde die passenden Psi-Symbole."
     GameKind.BUBBLES -> "Bring in 20 Sekunden so viele Seifenblasen wie möglich zum Platzen."
     GameKind.BERRIES -> "Kipp dein Handy, damit dein Tierchen die fallenden Beeren fängt. Goldene Beeren geben Extra-EP."
+    GameKind.REACTION -> "Tippe so schnell wie möglich, wenn dein Tierchen lila aufleuchtet. Bei rotem Leuchten nicht tippen!"
+    GameKind.ECHO -> "Merk dir die Farbfolge und spiel sie nach. Jede Runde wird sie länger."
+    GameKind.SHADOW -> "Erkenne am Schatten, was es ist."
 }
 
 @Composable

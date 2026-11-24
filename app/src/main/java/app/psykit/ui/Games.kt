@@ -125,6 +125,9 @@ fun GameDialog(
                             GameKind.MEMORY -> MemoryGame(done)
                             GameKind.BUBBLES -> BubblesGame(done)
                             GameKind.BERRIES -> BerriesGame(sprite, s, done)
+                            GameKind.REACTION -> ReactionGame(sprite, s, done)
+                            GameKind.ECHO -> EchoGame(done)
+                            GameKind.SHADOW -> ShadowGame(done)
                         }
                     }
                 }

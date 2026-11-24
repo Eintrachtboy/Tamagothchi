@@ -18,7 +18,7 @@ Neue Versionen einfach über die alte installieren, der Spielstand bleibt erhalt
 | Streicheln | Mit dem Finger über das Tierchen wischen: langsam beruhigt, zu schnell nervt. Je mehr Vertrauen, desto mehr Kuscheln am Stück. Finger gedrückt halten = kraulen; jeden Tag ist eine andere Körperstelle die geheime Lieblingsstelle (Freudensprung + Vertrauensbonus) |
 | Putzen | Mit dem Schwamm Flecken einschäumen, dann mit der Dusche abspülen. Nicht eingeschäumte Stellen werden nicht sauber. Häufchen mit der Dusche wegspülen. Nach Spaziergängen (alle 1500 Schritte) gibt es neue Schmutzflecken |
 | Schlafen / Wecken | Decke von unten hochziehen und Licht mit dem Regler dimmen. Optional ein Schlaflied ins Mikrofon summen, dann schläft es sofort ein. Nachts wecken macht grummelig |
-| Spielen | Freie Auswahl: „Wo steckt es?“ (3 Wolken mischen sich), Psi-Memory, Seifenblasen. Gute Ergebnisse trainieren Kampfwerte |
+| Spielen | Freie Auswahl: „Wo steckt es?“ (3 Wolken mischen sich), Psi-Memory, Seifenblasen, Psi-Reaktion, Echo (Farbfolge), Schattenraten. Gute Ergebnisse trainieren Kampfwerte |
 | Bonus | Beerenfang: Handy kippen, fallende Beeren fangen, goldene Beeren geben Extra-EP |
 | Schritte | 100 Schritte = 1 EP. Gezählt wird mit dem Schrittsensor des Handys |
 | Mehrere Tierchen | Über 🐾 oben: Liste aller Tierchen, wechseln, neues Ei holen oder löschen. Jedes hat eigene Werte, Level, Bilder und Figuren-Paket. Schritte gehen an das gerade aktive Tierchen |

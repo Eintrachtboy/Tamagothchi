@@ -305,10 +305,10 @@ object PetEngine {
             gamesWon = if (ratio >= 0.5f) s.gamesWon + 1 else s.gamesWon,
         )
         ns = when (game) {
-            GameKind.HIDE_SEEK -> ns.copy(trainSpd = ns.trainSpd + train)
-            GameKind.MEMORY -> ns.copy(trainPsi = ns.trainPsi + train)
+            GameKind.HIDE_SEEK, GameKind.REACTION -> ns.copy(trainSpd = ns.trainSpd + train)
+            GameKind.MEMORY, GameKind.ECHO -> ns.copy(trainPsi = ns.trainPsi + train)
             GameKind.BUBBLES -> ns.copy(trainAtk = ns.trainAtk + train)
-            GameKind.BERRIES -> ns.copy(trainDef = ns.trainDef + train)
+            GameKind.BERRIES, GameKind.SHADOW -> ns.copy(trainDef = ns.trainDef + train)
         }
         val trained = if (train > 0) " ${game.trains} +$train." else ""
         val msg = when {

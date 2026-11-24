@@ -286,10 +286,13 @@ private fun MemoryGame(onDone: (Int, Int, Int) -> Unit) {
             busy = true
             tries++
             if (cards[open[0]] == cards[open[1]]) { matched += open[0]; matched += open[1]; delay(250) } else delay(550)
-            open.clear()
+            open.clear() // ändert den Schlüssel dieses Effekts, danach läuft hier nichts mehr
             busy = false
-            if (matched.size == cards.size || tries >= maxTries) { delay(400); onDone(matched.size / 2, PSI_SYMBOLS.size, 0) }
         }
+    }
+    // Spielende getrennt prüfen (sonst würde open.clear() die Prüfung abbrechen)
+    LaunchedEffect(matched.size, tries) {
+        if (matched.size == cards.size || tries >= maxTries) { busy = true; delay(500); onDone(matched.size / 2, PSI_SYMBOLS.size, 0) }
     }
 
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {

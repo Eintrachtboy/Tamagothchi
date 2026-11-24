@@ -35,17 +35,19 @@ class CareWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, 
         val repo = PetRepository.get(applicationContext)
         StepSensor(applicationContext).readOnce()?.let { repo.onStepCounter(it) }
         repo.refresh()
-        val s = repo.state.value
         val now = System.currentTimeMillis()
         val night = DayPhase.at(now, repo.zone).isNight
-        if (s.stage == Stage.EGG || night || now - repo.lastNotificationAt < 3 * 3_600_000L) return Result.success()
+        if (night || now - repo.lastNotificationAt < 3 * 3_600_000L) return Result.success()
 
-        val text = when (s.mood) {
-            Mood.SICK -> "${s.name} fühlt sich gar nicht gut. Kümmere dich um ${s.name}!"
-            Mood.HUNGRY -> "${s.name} hat Hunger!"
-            Mood.DIRTY -> "Bei ${s.name} müsste mal sauber gemacht werden."
-            Mood.SAD -> "${s.name} ist einsam und möchte spielen."
-            else -> null
+        // Alle Tierchen prüfen, das erste, das etwas braucht, meldet sich
+        val text = repo.allPets().map { it.second }.filter { it.stage != Stage.EGG }.firstNotNullOfOrNull { s ->
+            when (s.mood) {
+                Mood.SICK -> "${s.name} fühlt sich gar nicht gut. Kümmere dich um ${s.name}!"
+                Mood.HUNGRY -> "${s.name} hat Hunger!"
+                Mood.DIRTY -> "Bei ${s.name} müsste mal sauber gemacht werden."
+                Mood.SAD -> "${s.name} ist einsam und möchte spielen."
+                else -> null
+            }
         } ?: return Result.success()
 
         if (notify(applicationContext, text)) repo.lastNotificationAt = now

@@ -30,8 +30,9 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
     private val prefs = ctx.getSharedPreferences("psykit_packs", Context.MODE_PRIVATE)
 
     var activeId: String?
-        get() = prefs.getString("active", null)
-        private set(v) { prefs.edit().putString("active", v).apply() }
+        get() = prefs.getString(activeKey, null)
+        private set(v) { prefs.edit().putString(activeKey, v).apply() }
+    private val activeKey = if (store.petId == "p1") "active" else "active_${store.petId}"
 
     fun list(): List<PackInfo> = root.listFiles()?.filter { it.isDirectory }?.mapNotNull { info(it) }?.sortedBy { it.name.lowercase() } ?: emptyList()
 

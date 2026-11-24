@@ -26,8 +26,10 @@ import kotlinx.coroutines.launch
 
 class PetViewModel(app: Application) : AndroidViewModel(app) {
     val repo = PetRepository.get(app)
-    val sprites = SpriteStore(app)
-    val packs = CharacterPacks(app, sprites)
+    var sprites = SpriteStore(app, repo.currentId.value)
+        private set
+    var packs = CharacterPacks(app, sprites)
+        private set
     val stepSensor = StepSensor(app)
 
     val state: StateFlow<PetState> = repo.state
@@ -145,6 +147,38 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     fun clearSprite(stage: Stage, variant: SpriteVariant) { packs.markModified(); sprites.clear(stage, variant); _spriteVersion.value++ }
 
     fun say(msg: String) { _message.value = msg }
+
+    // ---------- Mehrere Tierchen ----------
+    val currentPetId: StateFlow<String> = repo.currentId
+
+    fun allPets() = repo.allPets()
+    fun spritesFor(id: String) = if (id == sprites.petId) sprites else SpriteStore(getApplication(), id)
+
+    private fun reloadSprites() {
+        sprites = SpriteStore(getApplication(), repo.currentId.value)
+        packs = CharacterPacks(getApplication(), sprites)
+        _spriteVersion.value++
+    }
+
+    fun switchPet(id: String) {
+        repo.switchTo(id)
+        reloadSprites()
+        greet()
+    }
+
+    fun addPet(name: String) {
+        repo.addPet(name)
+        reloadSprites()
+        _message.value = "Ein neues Ei für ${state.value.name}! Es schlüpft in ein paar Minuten."
+    }
+
+    fun deletePet(id: String) {
+        val app = getApplication<Application>()
+        repo.deletePet(id)
+        if (id != "p1") java.io.File(app.filesDir, "sprites_$id").deleteRecursively()
+        else java.io.File(app.filesDir, "sprites").listFiles()?.forEach { it.delete() }
+        reloadSprites()
+    }
 
     override fun onCleared() { stopSteps() }
 }

@@ -47,9 +47,10 @@ data class Sprite(val image: ImageBitmap?, val animated: File?, val exact: Boole
  * Fest einbauen geht auch: app/src/main/assets/sprites/<stufe><_variante>.png,
  * z. B. baby.png, baby_sleeping.png, adult_sad.png.
  */
-class SpriteStore(context: Context) {
+class SpriteStore(context: Context, val petId: String = "p1") {
     private val ctx = context.applicationContext
-    internal val dir = File(ctx.filesDir, "sprites").apply { mkdirs() }
+    /** Jedes Tierchen hat seinen eigenen Bilder-Ordner (das erste nutzt den alten „sprites“). */
+    internal val dir = File(ctx.filesDir, if (petId == "p1") "sprites" else "sprites_$petId").apply { mkdirs() }
     private val cache = mutableMapOf<String, ImageBitmap?>()
 
     /** Nach dem Wechsel eines Figuren-Pakets alles neu laden. */

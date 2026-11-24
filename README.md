@@ -21,6 +21,7 @@ Neue Versionen einfach über die alte installieren, der Spielstand bleibt erhalt
 | Spielen | Freie Auswahl: „Wo steckt es?“ (3 Wolken mischen sich), Psi-Memory, Seifenblasen. Gute Ergebnisse trainieren Kampfwerte |
 | Bonus | Beerenfang: Handy kippen, fallende Beeren fangen, goldene Beeren geben Extra-EP |
 | Schritte | 100 Schritte = 1 EP. Gezählt wird mit dem Schrittsensor des Handys |
+| Mehrere Tierchen | Über 🐾 oben: Liste aller Tierchen, wechseln, neues Ei holen oder löschen. Jedes hat eigene Werte, Level, Bilder und Figuren-Paket. Schritte gehen an das gerade aktive Tierchen |
 | Vertrauen | Das Tierchen merkt sich, wie du es behandelst. Vernachlässigen und Nerven senkt das Vertrauen, liebevolle Pflege erhöht es |
 | Werte | Kampfwerte als Vorbereitung für das spätere Kampfsystem |
 

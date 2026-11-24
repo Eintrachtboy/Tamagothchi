@@ -108,6 +108,7 @@ fun PetScreen(vm: PetViewModel) {
     var game by remember { mutableStateOf<GameKind?>(null) }
     var showStats by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showPets by remember { mutableStateOf(false) }
     var stepPermission by remember { mutableStateOf(vm.stepSensor.hasPermission()) }
     var askedOnce by rememberSaveable { mutableStateOf(false) }
 
@@ -284,7 +285,7 @@ fun PetScreen(vm: PetViewModel) {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Header(s, onInfo = { showStats = true }, onSettings = { showSettings = true })
+            Header(s, onPets = { showPets = true }, onInfo = { showStats = true }, onSettings = { showSettings = true })
 
             PetScene(
                 stage = s.stage, mood = s.mood, sleeping = s.sleeping, poops = s.poops, phase = phase,
@@ -447,6 +448,7 @@ fun PetScreen(vm: PetViewModel) {
     }
     if (showStats) StatsDialog(s, onDismiss = { showStats = false })
     if (showSettings) SettingsDialog(vm, s, onDismiss = { showSettings = false })
+    if (showPets) PetsDialog(vm, onDismiss = { showPets = false })
 }
 
 private fun gameInfo(k: GameKind) = when (k) {
@@ -605,7 +607,7 @@ private fun ageText(s: PetState): String {
 }
 
 @Composable
-private fun Header(s: PetState, onInfo: () -> Unit, onSettings: () -> Unit) {
+private fun Header(s: PetState, onPets: () -> Unit, onInfo: () -> Unit, onSettings: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(s.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -627,6 +629,7 @@ private fun Header(s: PetState, onInfo: () -> Unit, onSettings: () -> Unit) {
                 Text("${s.exp} / $need EP", style = MaterialTheme.typography.labelSmall)
             }
         }
+        IconButton(onClick = onPets) { Text("🐾", fontSize = 22.sp) }
         IconButton(onClick = onInfo) { Icon(Icons.Filled.Info, contentDescription = "Werte") }
         IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, contentDescription = "Einstellungen") }
     }

@@ -1,6 +1,10 @@
 package app.psykit.ui
 
 import android.content.Context
+import android.graphics.ImageDecoder
+import android.graphics.drawable.AnimatedImageDrawable
+import android.widget.ImageView
+import androidx.compose.ui.viewinterop.AndroidView
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -68,6 +72,7 @@ import app.psykit.core.model.Mood
 import app.psykit.core.model.PetState
 import app.psykit.core.model.Stage
 import app.psykit.sprites.Sprite
+import app.psykit.sprites.SpriteVariant
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import kotlin.random.Random
@@ -83,6 +88,8 @@ fun GameDialog(
     onCancel: () -> Unit,
 ) {
     var result by remember { mutableStateOf<Triple<Int, Int, Int>?>(null) }
+    // In den Spielen immer dein Standardbild („Normal“) zeigen
+    val sprite = remember(s.stage) { vm.sprites.load(s.stage, SpriteVariant.BASE) ?: sprite }
     Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp)) {
@@ -126,12 +133,30 @@ fun GameDialog(
     }
 }
 
-/** Kleines Bild des Tierchens: eigenes Bild oder die gezeichnete Figur. */
+/** Kleines Bild des Tierchens: dein eigenes Bild (auch animiert) oder die eingebaute Figur. */
 @Composable
 fun PetIcon(sprite: Sprite?, stage: Stage, mood: Mood, size: Dp, modifier: Modifier = Modifier) {
     val img = sprite?.image
-    if (img != null) Image(img, contentDescription = null, contentScale = ContentScale.Fit, modifier = modifier.size(size))
-    else Canvas(modifier.size(size)) { drawPsykit(if (stage == Stage.EGG) Stage.BABY else stage, mood, 0f, 0f, 0f, 0f) }
+    val anim = sprite?.animated
+    when {
+        anim != null -> {
+            val drawable = remember(anim, anim.lastModified()) {
+                runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(anim)) }.getOrNull()
+            }
+            AndroidView(
+                factory = { ctx -> ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_CENTER } },
+                update = { iv ->
+                    if (iv.drawable !== drawable) {
+                        iv.setImageDrawable(drawable)
+                        (drawable as? AnimatedImageDrawable)?.start()
+                    }
+                },
+                modifier = modifier.size(size),
+            )
+        }
+        img != null -> Image(img, contentDescription = null, contentScale = ContentScale.Fit, modifier = modifier.size(size))
+        else -> Canvas(modifier.size(size)) { drawPsykit(if (stage == Stage.EGG) Stage.BABY else stage, mood, 0f, 0f, 0f, 0f) }
+    }
 }
 
 // ---------------------------------------------------------------- Wo steckt es?
@@ -143,17 +168,24 @@ private fun HideSeekGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -
     var score by remember { mutableIntStateOf(0) }
     // slot[i] = an welcher Position (0..2) Wolke i gerade steht
     val slot = remember { mutableStateListOf(0, 1, 2) }
-    var hidden by remember { mutableIntStateOf(0) } // Index der Wolke mit dem Tierchen
-    var phase by remember { mutableStateOf("show") } // show, shuffle, guess, reveal
+    var hidden by remember { mutableIntStateOf(Random.nextInt(3)) } // Index der Wolke mit dem Tierchen
+    var phase by remember { mutableStateOf("show") } // show, hide, shuffle, guess, reveal
     var picked by remember { mutableIntStateOf(-1) }
     var speed by remember { mutableIntStateOf(450) }
+    var go by remember { mutableIntStateOf(0) }
 
+    // Neue Runde: Tierchen sitzt sichtbar auf einer Wolke und wartet auf „Mischen!“
     LaunchedEffect(round) {
         if (round >= rounds) { onDone(score, rounds, 0); return@LaunchedEffect }
         picked = -1
         hidden = Random.nextInt(3)
         phase = "show"
-        delay(1400)
+    }
+    // Nach „Mischen!“: erst verstecken, dann mischen
+    LaunchedEffect(go) {
+        if (go == 0) return@LaunchedEffect
+        phase = "hide"
+        delay(900)
         phase = "shuffle"
         speed = 460 - round * 110
         repeat(5 + round * 3) {
@@ -169,45 +201,61 @@ private fun HideSeekGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -
         Text("Runde ${minOf(round + 1, rounds)} von $rounds · Gefunden: $score", fontWeight = FontWeight.Bold)
         Text(
             when (phase) {
-                "show" -> "Merk dir, wo ${s.name} sich versteckt!"
+                "show" -> "Hier startet ${s.name}. Merk dir die Wolke!"
+                "hide" -> "${s.name} versteckt sich …"
                 "shuffle" -> "Die Wolken mischen sich …"
                 "guess" -> "Hinter welcher Wolke steckt ${s.name}?"
                 else -> if (picked == hidden) "Gefunden! 🎉" else "Leider nicht. Hier war es!"
             },
+            textAlign = TextAlign.Center,
         )
         Spacer(Modifier.height(24.dp))
-        BoxWithConstraints(Modifier.fillMaxWidth().height(260.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(240.dp)) {
             val slotW = maxWidth / 3
             for (i in 0 until 3) {
                 val x by animateFloatAsState(slot[i].toFloat(), tween(speed), label = "cloud$i")
-                val showPet = i == hidden && (phase == "show" || phase == "reveal")
+                val up = i == hidden && (phase == "show" || phase == "reveal")
+                val petDown by animateFloatAsState(if (up) 0f else 1f, tween(if (up) 400 else 800), label = "pet$i")
                 Box(
                     Modifier
-                        .offset(x = slotW * x, y = 60.dp)
-                        .size(slotW, 160.dp)
+                        .offset(x = slotW * x, y = 20.dp)
+                        .size(slotW, 210.dp)
                         .clickable(enabled = phase == "guess") {
                             picked = i
                             if (i == hidden) score++
                             phase = "reveal"
                         },
-                    contentAlignment = Alignment.Center,
                 ) {
-                    if (showPet) PetIcon(sprite, s.stage, Mood.HAPPY, 90.dp, Modifier.offset(y = (-55).dp))
-                    Canvas(Modifier.fillMaxSize().padding(6.dp).offset(y = 30.dp)) {
-                        val w = size.width; val h = size.height * 0.5f
+                    // Tierchen sitzt oben auf der Wolke und rutscht beim Verstecken dahinter
+                    if (i == hidden && petDown < 0.99f) {
+                        PetIcon(
+                            sprite, s.stage, Mood.HAPPY, 110.dp,
+                            Modifier
+                                .align(Alignment.TopCenter)
+                                .offset(y = (petDown * 90).dp)
+                                .alpha(1f - petDown * 0.6f),
+                        )
+                    }
+                    Canvas(Modifier.fillMaxWidth().height(120.dp).align(Alignment.BottomCenter).padding(horizontal = 4.dp)) {
+                        val w = size.width; val h = size.height
                         val c = if (phase == "reveal" && i == picked && i != hidden) Color(0xFFFFD6D6) else Color.White
-                        drawCircle(c, w * 0.26f, Offset(w * 0.3f, h * 0.6f))
-                        drawCircle(c, w * 0.32f, Offset(w * 0.55f, h * 0.45f))
-                        drawCircle(c, w * 0.24f, Offset(w * 0.78f, h * 0.65f))
-                        drawRect(c, topLeft = Offset(w * 0.3f, h * 0.6f), size = androidx.compose.ui.geometry.Size(w * 0.48f, h * 0.3f))
-                        drawCircle(Color(0xFFB8D4F0), w * 0.32f, Offset(w * 0.55f, h * 0.45f), style = Stroke(3f))
+                        drawCircle(c, w * 0.26f, Offset(w * 0.28f, h * 0.55f))
+                        drawCircle(c, w * 0.33f, Offset(w * 0.52f, h * 0.42f))
+                        drawCircle(c, w * 0.25f, Offset(w * 0.76f, h * 0.58f))
+                        drawRoundRect(
+                            c, topLeft = Offset(w * 0.06f, h * 0.5f), size = androidx.compose.ui.geometry.Size(w * 0.88f, h * 0.38f),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(h * 0.19f, h * 0.19f),
+                        )
+                        drawCircle(Color(0xFFB8D4F0), w * 0.33f, Offset(w * 0.52f, h * 0.42f), style = Stroke(3f))
                     }
                 }
             }
         }
-        if (phase == "reveal") {
-            Spacer(Modifier.height(12.dp))
-            Button(onClick = { round++ }) { Text(if (round + 1 >= rounds) "Ergebnis" else "Nächste Runde") }
+        Spacer(Modifier.height(12.dp))
+        when (phase) {
+            "show" -> Button(onClick = { go++ }) { Text("Mischen!") }
+            "reveal" -> Button(onClick = { round++ }) { Text(if (round + 1 >= rounds) "Ergebnis" else "Nächste Runde") }
+            else -> {}
         }
     }
 }

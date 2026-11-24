@@ -36,6 +36,9 @@ data class PackManifest(
     }
 }
 
+/** Ergebnis eines ZIP-Imports: das Paket (oder null), kurze Hinweise und der ausführliche Bericht pro Datei. */
+data class ImportOutcome(val pack: PackInfo?, val notes: List<String>, val report: List<ReportEntry>)
+
 data class PackInfo(val id: String, val name: String, val petName: String, val images: Int, val floating: Boolean? = null, val head: String? = null)
 
 /**
@@ -78,11 +81,13 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
      * Ein bestehendes Paket gleichen Namens wird nur ersetzt, wenn alles geklappt hat. Bilder, die im neuen
      * ZIP fehlen oder fehlschlagen, bleiben aus dem bisherigen Stand erhalten.
      */
-    fun import(uri: Uri, fallbackName: String): Pair<PackInfo?, List<String>> {
+    fun import(uri: Uri, fallbackName: String): ImportOutcome {
         val tmp = File(root, ".import-${System.currentTimeMillis()}").apply { mkdirs() }
         var manifest = PackManifest()
         val notes = mutableListOf<String>()
         val failedKeys = mutableSetOf<String>()
+        val report = mutableListOf<ReportEntry>()
+        fun role(t: Pair<app.psykit.core.model.Stage, SpriteVariant>) = "${t.first.displayName} · ${t.second.label}"
         var count = 0
         try {
             ctx.contentResolver.openInputStream(uri)?.use { input ->
@@ -96,7 +101,11 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
                         val ext = base.substringAfterLast('.', "").lowercase()
                         val isImage = ext in setOf("png", "webp", "gif", "jpg", "jpeg")
                         val target = if (isImage) SpriteNames.guess(base) else null
-                        if (isImage && target == null) { notes += "$base: Dateiname unbekannt (z. B. adult.webp oder baby_happy.webp)"; continue }
+                        if (isImage && target == null) {
+                            notes += "$base: Dateiname unbekannt (z. B. adult.webp oder baby_happy.webp)"
+                            report += ReportEntry(base, null, ReportEntry.Status.REJECTED, if (e.size > 0) SpriteStore.mb(e.size) else "", listOf("Dateiname unbekannt, z. B. adult.webp oder baby_happy.webp"))
+                            continue
+                        }
                         val bytes = SpriteStore.readLimited(zip, SpriteStore.MAX_IMAGE_BYTES)
                         if (bytes.size > SpriteStore.MAX_IMAGE_BYTES) {
                             // Rest des Eintrags überspringen, um die echte Größe zu melden
@@ -105,32 +114,40 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
                             while (true) { val n = zip.read(buf); if (n < 0) break; actual += n }
                             total += actual
                             if (target != null) failedKeys += SpriteStore.keyOf(target.first, target.second)
-                            notes += "$base: zu groß: ${SpriteStore.mb(actual)}, erlaubt sind ${SpriteStore.mb(SpriteStore.MAX_IMAGE_BYTES.toLong())}"
+                            val r = ImageResult.TooLarge(actual, SpriteStore.MAX_IMAGE_BYTES.toLong())
+                            notes += "$base: ${r.reason()}"
+                            report += SpriteStore.report(base, target?.let(::role), actual, app.psykit.core.image.ImageInfo.parse(bytes), r)
                             continue
                         }
                         total += bytes.size
                         if (total > MAX_ZIP_BYTES) {
                             notes += "Ab $base nicht mehr gelesen: Paket größer als ${SpriteStore.mb(MAX_ZIP_BYTES)}"
+                            report += ReportEntry(base, target?.let(::role), ReportEntry.Status.REJECTED, SpriteStore.mb(bytes.size.toLong()), listOf("ab hier nicht mehr gelesen: Paket entpackt größer als ${SpriteStore.mb(MAX_ZIP_BYTES)}"))
                             break
                         }
                         when {
                             base.equals("pack.json", ignoreCase = true) -> {
                                 val m = PackManifest.parse(bytes.decodeToString())
                                 if (m != null) manifest = m else notes += "pack.json: nicht lesbar, wird ignoriert"
+                                report += ReportEntry(base, null, if (m != null) ReportEntry.Status.OK else ReportEntry.Status.WARN, "Paketbeschreibung", if (m != null) emptyList() else listOf("nicht lesbar, wird ignoriert"))
                             }
                             target != null -> {
                                 val key = SpriteStore.keyOf(target.first, target.second)
                                 val r = SpriteStore.writeImage(tmp, key, bytes)
                                 if (r.saved) count++ else failedKeys += key
                                 r.reason()?.let { notes += "$base: $it" }
+                                report += SpriteStore.report(base, role(target), bytes.size.toLong(), app.psykit.core.image.ImageInfo.parse(bytes), r)
                             }
                             ext in setOf("txt", "md") -> {}
-                            else -> notes += "$base: kein Bild, ignoriert"
+                            else -> {
+                                notes += "$base: kein Bild, ignoriert"
+                                report += ReportEntry(base, null, ReportEntry.Status.IGNORED, SpriteStore.mb(bytes.size.toLong()), listOf("kein Bild, ignoriert"))
+                            }
                         }
                     }
                 }
-            } ?: run { tmp.deleteRecursively(); return null to listOf("Datei konnte nicht geöffnet werden") }
-            if (count == 0) { tmp.deleteRecursively(); return null to notes }
+            } ?: run { tmp.deleteRecursively(); return ImportOutcome(null, listOf("Datei konnte nicht geöffnet werden"), report) }
+            if (count == 0) { tmp.deleteRecursively(); return ImportOutcome(null, notes, report) }
 
             val name = manifest.name.ifBlank { fallbackName }
             val dest = File(root, idFor(name))
@@ -143,7 +160,10 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
                 val newKeys = tmp.listFiles()?.filter { it.extension == "png" || it.extension == "anim" }?.map { it.nameWithoutExtension }?.toSet().orEmpty()
                 dest.listFiles()?.filter { (it.extension == "png" || it.extension == "anim") && it.nameWithoutExtension !in newKeys }?.forEach { f ->
                     f.copyTo(File(tmp, f.name), overwrite = true)
-                    if (f.nameWithoutExtension in failedKeys) notes += "${f.nameWithoutExtension}: bisheriges Bild bleibt erhalten"
+                    if (f.nameWithoutExtension in failedKeys) {
+                        notes += "${f.nameWithoutExtension}: bisheriges Bild bleibt erhalten"
+                        report += ReportEntry(f.name.substringBefore('.') + " (bisher)", null, ReportEntry.Status.KEPT, SpriteStore.mb(f.length()), listOf("neues Bild abgelehnt, das bisherige bleibt erhalten"))
+                    }
                 }
             }
             val m = manifest.copy(
@@ -159,20 +179,20 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
             val backup = File(root, ".old-${dest.name}-${System.currentTimeMillis()}")
             if (dest.exists() && !dest.renameTo(backup)) {
                 tmp.deleteRecursively()
-                return null to (notes + "Paket konnte nicht ersetzt werden, der bisherige Stand bleibt unverändert")
+                return ImportOutcome(null, notes + "Paket konnte nicht ersetzt werden, der bisherige Stand bleibt unverändert", report)
             }
             if (!tmp.renameTo(dest)) {
                 if (backup.exists()) backup.renameTo(dest)
                 tmp.deleteRecursively()
-                return null to (notes + "Paket konnte nicht gespeichert werden, der bisherige Stand bleibt unverändert")
+                return ImportOutcome(null, notes + "Paket konnte nicht gespeichert werden, der bisherige Stand bleibt unverändert", report)
             }
             backup.deleteRecursively()
             // Gleiches Paket neu importiert: beim Aktivieren nicht mit dem alten Stand überschreiben.
             if (activeId == dest.name) activeId = ""
-            return info(dest) to notes
+            return ImportOutcome(info(dest), notes, report)
         } catch (e: Exception) {
             tmp.deleteRecursively()
-            return null to (notes + "Das ist kein gültiges ZIP (${e.javaClass.simpleName}). Der bisherige Stand bleibt unverändert")
+            return ImportOutcome(null, notes + "Das ist kein gültiges ZIP (${e.javaClass.simpleName}). Der bisherige Stand bleibt unverändert", report)
         }
     }
 

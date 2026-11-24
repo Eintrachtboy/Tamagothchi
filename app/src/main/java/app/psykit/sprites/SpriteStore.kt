@@ -89,11 +89,21 @@ class SpriteStore(context: Context, val petId: String = "p1") {
      * Ein einzelnes Bild übernehmen. Gleiche Regeln und gleiche Größengrenze wie beim ZIP-Import.
      * Schlägt es fehl, bleibt das bisherige Bild erhalten.
      */
+    /** Eckdaten des zuletzt mit [save] gelesenen Bildes (für den Import-Bericht). */
+    var lastInfo: app.psykit.core.image.ImageInfo? = null; private set
+    var lastSize: Long = 0; private set
+
     fun save(stage: Stage, v: SpriteVariant, uri: Uri): ImageResult {
+        lastInfo = null; lastSize = 0
         val bytes = runCatching {
             ctx.contentResolver.openInputStream(uri)?.use { readLimited(it, MAX_IMAGE_BYTES) }
         }.getOrNull() ?: return ImageResult.Unreadable(0)
-        if (bytes.size > MAX_IMAGE_BYTES) return ImageResult.TooLarge(sizeOf(uri) ?: bytes.size.toLong(), MAX_IMAGE_BYTES.toLong())
+        if (bytes.size > MAX_IMAGE_BYTES) {
+            val actual = sizeOf(uri) ?: bytes.size.toLong()
+            lastInfo = app.psykit.core.image.ImageInfo.parse(bytes); lastSize = actual
+            return ImageResult.TooLarge(actual, MAX_IMAGE_BYTES.toLong())
+        }
+        lastInfo = app.psykit.core.image.ImageInfo.parse(bytes); lastSize = bytes.size.toLong()
         val r = writeImage(dir, key(stage, v), bytes)
         if (r.saved) cache.remove(key(stage, v))
         return r
@@ -133,7 +143,8 @@ class SpriteStore(context: Context, val petId: String = "p1") {
             return out.toByteArray()
         }
 
-        fun mb(bytes: Long) = String.format(java.util.Locale.GERMANY, "%.1f MB", bytes / 1024.0 / 1024.0)
+        fun mb(bytes: Long) = if (bytes < 1024 * 1024) "${maxOf(1L, (bytes + 512) / 1024)} KB"
+            else String.format(java.util.Locale.GERMANY, "%.1f MB", bytes / 1024.0 / 1024.0)
 
         /**
          * Speichert Bilddaten unter [key] in [dir]: animierte GIF/WebP unverändert als .anim,
@@ -170,15 +181,43 @@ class SpriteStore(context: Context, val petId: String = "p1") {
             return if (animated) ImageResult.StillOnly(android.os.Build.VERSION.SDK_INT < 28) else ImageResult.Ok(false)
         }
 
-        /** Animiert? WebP mit ANIM-Block oder GIF. */
-        private fun isAnimated(b: ByteArray): Boolean {
-            if (b.size > 6 && b[0] == 'G'.code.toByte() && b[1] == 'I'.code.toByte() && b[2] == 'F'.code.toByte()) return true
-            if (b.size > 16 && String(b, 0, 4, Charsets.US_ASCII) == "RIFF" && String(b, 8, 4, Charsets.US_ASCII) == "WEBP") {
-                val head = String(b, 0, minOf(b.size, 4096), Charsets.ISO_8859_1)
-                return head.contains("ANIM")
+        /** Animiert? GIF, oder WebP mit Animations-Flag (gleiche Regel wie im PC-Prüfskript). */
+        private fun isAnimated(b: ByteArray): Boolean = app.psykit.core.image.ImageInfo.isAnimatedContainer(b)
+
+        /** Eine Zeile für den Import-Bericht: was ist die Datei, wurde sie übernommen, was fällt auf. */
+        fun report(file: String, role: String?, size: Long, info: app.psykit.core.image.ImageInfo?, result: ImageResult?): ReportEntry {
+            val notes = mutableListOf<String>()
+            val asAnim = result is ImageResult.Ok && result.animated
+            val detail = buildString {
+                if (info != null) {
+                    append(info.format)
+                    if (asAnim) append(" animiert")
+                    if (info.width > 0) append(" · ${info.width}×${info.height}")
+                    if (asAnim) append(" · ${info.frames} Frames · ${fmt(info.fps, 0)} fps · ${fmt(info.durationMs / 1000.0, 1)} s")
+                }
+                append(if (isEmpty()) mb(size) else " · ${mb(size)}")
             }
-            return false
+            result?.reason()?.let { notes += it }
+            if (info != null && result?.saved == true) {
+                if (asAnim) {
+                    if (info.maxSide > 1024) notes += "${info.maxSide} px ist größer als nötig, 512–768 px reichen"
+                    else if (info.maxSide < 512) notes += "${info.maxSide} px wirkt auf großen Handys etwas weich"
+                    if (info.fps > 30) notes += "${fmt(info.fps, 0)} fps: mehr als 30 fps sieht man kaum"
+                    if (info.zeroDelayFrames > 0) notes += "${info.zeroDelayFrames} Frames ohne Verzögerung, gezeigt je 100 ms"
+                } else if (info.maxSide > 768) notes += "auf 768 px verkleinert"
+                if (info.apngFrames > 1) notes += "animiertes PNG: nur das erste Bild übernommen, bitte als WebP speichern"
+                if (info.width > 0 && kotlin.math.abs(info.width - info.height) > info.maxSide * 0.05) notes += "nicht quadratisch"
+                if (info.alpha == false) notes += "kein transparenter Hintergrund"
+            }
+            val status = when {
+                result == null || !result.saved -> ReportEntry.Status.REJECTED
+                result !is ImageResult.Ok || (info?.apngFrames ?: 0) > 1 -> ReportEntry.Status.WARN
+                else -> ReportEntry.Status.OK
+            }
+            return ReportEntry(file, role, status, detail, notes)
         }
+
+        private fun fmt(x: Double, digits: Int) = String.format(java.util.Locale.GERMANY, "%.${digits}f", x)
 
         /** Auf max. 768 px verkleinert dekodieren; mit Ersatzweg für große oder ungewöhnliche Dateien. */
         private fun decodeScaled(bytes: ByteArray): Bitmap? {
@@ -207,6 +246,11 @@ class SpriteStore(context: Context, val petId: String = "p1") {
         animFile(stage, v).delete()
         cache.remove(key(stage, v))
     }
+}
+
+/** Eine Zeile im Import-Bericht. [role] z. B. „Baby · Glücklich“, null wenn der Name unbekannt ist. */
+data class ReportEntry(val file: String, val role: String?, val status: Status, val detail: String, val notes: List<String>) {
+    enum class Status { OK, WARN, REJECTED, KEPT, IGNORED }
 }
 
 /** Ergebnis beim Übernehmen eines Bildes, mit genauem Grund. */

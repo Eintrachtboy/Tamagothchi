@@ -96,6 +96,8 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
     var importInfo by remember { mutableStateOf<String?>(null) }
     var packInfo by remember { mutableStateOf<String?>(null) }
     var showHelp by remember { mutableStateOf(false) }
+    var showReport by remember { mutableStateOf(false) }
+    val report by vm.importReport.collectAsState()
     var confirmDelete by remember { mutableStateOf<String?>(null) }
     val packs = remember(spriteVersion) { vm.packs.list() }
     val activePack = remember(spriteVersion) { vm.packs.activeId }
@@ -126,7 +128,10 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
                     Button(onClick = { zipPicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }) { Text("Paket importieren (ZIP)") }
                     OutlinedButton(onClick = { showHelp = true }) { Text("❓ Anleitung") }
                 }
-                packInfo?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }
+                packInfo?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                    if (report.isNotEmpty() && it != "Importiere …") TextButton(onClick = { showReport = true }) { Text("📋 Import-Bericht ansehen") }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text((if (activePack == "") "● " else "○ ") + "Eingebaute Figur", Modifier.weight(1f))
                     if (activePack != "") TextButton(onClick = { vm.useBuiltIn() }) { Text("Benutzen") }
@@ -163,7 +168,10 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
                         "und optional Laune (schlaeft, gluecklich, traurig, hungrig, krank), z. B. „baby_traurig.png“.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                importInfo?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }
+                importInfo?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+                    if (report.isNotEmpty()) TextButton(onClick = { showReport = true }) { Text("📋 Import-Bericht ansehen") }
+                }
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Stage.entries.forEach { st ->
                         FilterChip(selected = st == selectedStage, onClick = { selectedStage = st }, label = { Text(st.displayName) })
@@ -196,4 +204,38 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
         confirmButton = { TextButton(onClick = onDismiss) { Text("Fertig") } },
     )
     if (showHelp) HelpDialog(onDismiss = { showHelp = false })
+    if (showReport) ImportReportDialog(report, onDismiss = { showReport = false })
+}
+
+/** Bericht zum letzten Import: jede Datei mit Rolle, Format, Auflösung, Frames, fps, Größe und Hinweisen. */
+@Composable
+fun ImportReportDialog(entries: List<app.psykit.sprites.ReportEntry>, onDismiss: () -> Unit) {
+    val S = app.psykit.sprites.ReportEntry.Status
+    val ok = entries.count { it.status == S.OK || it.status == S.WARN }
+    val rejected = entries.count { it.status == S.REJECTED }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Import-Bericht") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("$ok übernommen" + (if (rejected > 0) " · $rejected abgelehnt" else ""), fontWeight = FontWeight.Bold)
+                entries.forEach { e ->
+                    val (icon, color) = when (e.status) {
+                        S.OK -> "✓" to MaterialTheme.colorScheme.primary
+                        S.WARN -> "!" to MaterialTheme.colorScheme.tertiary
+                        S.REJECTED -> "✗" to MaterialTheme.colorScheme.error
+                        S.KEPT -> "↺" to MaterialTheme.colorScheme.secondary
+                        S.IGNORED -> "·" to MaterialTheme.colorScheme.outline
+                    }
+                    Column {
+                        Text("$icon ${e.file}" + (e.role?.let { " → $it" } ?: ""), fontWeight = FontWeight.Bold, color = color, style = MaterialTheme.typography.bodyMedium)
+                        if (e.detail.isNotBlank()) Text(e.detail, style = MaterialTheme.typography.bodySmall)
+                        e.notes.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall, color = if (e.status == S.REJECTED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+                Text("Tipp: Mit dem Prüfskript psykit_pruefen.py siehst du das schon am PC, bevor du das ZIP überträgst.", style = MaterialTheme.typography.labelSmall)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Schließen") } },
+    )
 }

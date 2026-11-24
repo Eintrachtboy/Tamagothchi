@@ -113,11 +113,15 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     fun rename(name: String) = repo.update { s, _ -> PetEngine.rename(s, name) to Unit }
     fun reset(name: String) { repo.reset(name); _message.value = "Ein neues Ei! Es schlüpft in ein paar Minuten." }
 
+    private val _importReport = MutableStateFlow<List<app.psykit.sprites.ReportEntry>>(emptyList())
+    /** Ausführlicher Bericht zum letzten Import (jede Datei mit Größe, Auflösung, Frames, Hinweisen). */
+    val importReport: StateFlow<List<app.psykit.sprites.ReportEntry>> = _importReport
+
     /** Figuren-Paket (ZIP) importieren und direkt benutzen. */
     fun importZip(uri: Uri, onDone: (String) -> Unit) {
         viewModelScope.launch {
             val fallback = (sprites.displayName(uri) ?: "Paket").substringBeforeLast('.')
-            val (info, unknown) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { packs.import(uri, fallback) }
+            val (info, unknown, report) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { packs.import(uri, fallback) }
             val msg = if (info == null) "Import fehlgeschlagen, das bisherige Paket bleibt unverändert." + (if (unknown.isNotEmpty()) "\n" + unknown.take(8).joinToString("\n") { "• $it" } else " Keine passenden Bilder gefunden.")
             else {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { packs.activate(info.id) }
@@ -128,6 +132,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
                 "Paket „${info.name}“ mit ${info.images} Bildern importiert und aktiviert." +
                     (if (unknown.isNotEmpty()) "\nHinweise:\n" + unknown.take(8).joinToString("\n") { "• $it" } + (if (unknown.size > 8) "\n… und ${unknown.size - 8} weitere" else "") else "")
             }
+            _importReport.value = report
             _message.value = msg
             onDone(msg)
         }
@@ -164,15 +169,22 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         packs.markModified()
         var ok = 0
         val notes = mutableListOf<String>()
+        val report = mutableListOf<app.psykit.sprites.ReportEntry>()
         uris.forEach { uri ->
             val name = sprites.displayName(uri) ?: "?"
             val target = SpriteNames.guess(name)
-            if (target == null) { notes += "$name: Dateiname unbekannt, bitte einzeln setzen"; return@forEach }
+            if (target == null) {
+                notes += "$name: Dateiname unbekannt, bitte einzeln setzen"
+                report += app.psykit.sprites.ReportEntry(name, null, app.psykit.sprites.ReportEntry.Status.REJECTED, "", listOf("Dateiname unbekannt, bitte einzeln setzen"))
+                return@forEach
+            }
             val r = sprites.save(target.first, target.second, uri)
+            report += app.psykit.sprites.SpriteStore.report(name, "${target.first.displayName} · ${target.second.label}", sprites.lastSize, sprites.lastInfo, r)
             if (r.saved) ok++
             r.reason()?.let { notes += "$name: $it" + if (!r.saved) ", bisheriges Bild bleibt" else "" }
         }
         _spriteVersion.value++
+        _importReport.value = report
         _message.value = buildString {
             append("$ok Bild(er) importiert.")
             notes.forEach { append("\n• $it") }

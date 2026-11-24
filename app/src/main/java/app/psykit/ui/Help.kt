@@ -40,18 +40,18 @@ Name des Tierchens: [z. B. Grauli]
 Stil: [z. B. niedlicher Anime-Stil, weiche Farben, klare Umrisse]
 
 Erzeuge diese Bilder, immer dieselbe Figur, gleicher Stil, gleiche Blickrichtung und gleicher Bildausschnitt:
-- egg.png: nur ein Ei, passend zur Figur (Farbe/Muster), noch nicht geschlüpft
+- egg.webp: nur ein Ei, passend zur Figur (Farbe/Muster), noch nicht geschlüpft
 - Für jede Stufe baby, child, teen, adult je 6 Bilder:
-  <stufe>.png (normal, wach, zufrieden)
-  <stufe>_happy.png (sehr glücklich, lacht, strahlende Augen)
-  <stufe>_sad.png (traurig, hängende Ohren, evtl. ein Tränchen)
-  <stufe>_hungry.png (hungrig, leckt sich die Lippen oder hält den Bauch)
-  <stufe>_sick.png (krank, blass, müde Augen, evtl. Pflaster oder Thermometer)
-  <stufe>_sleeping.png (schläft, Augen zu, eingerollt oder liegend)
+  <stufe>.webp (normal, wach, zufrieden)
+  <stufe>_happy.webp (sehr glücklich, lacht, strahlende Augen)
+  <stufe>_sad.webp (traurig, hängende Ohren, evtl. ein Tränchen)
+  <stufe>_hungry.webp (hungrig, leckt sich die Lippen oder hält den Bauch)
+  <stufe>_sick.webp (krank, blass, müde Augen, evtl. Pflaster oder Thermometer)
+  <stufe>_sleeping.webp (schläft, Augen zu, eingerollt oder liegend)
 - Die Stufen zeigen dieselbe Figur beim Älterwerden: baby = sehr klein und rund mit großem Kopf, child = etwas größer, teen = schlanker und sportlicher, adult = ausgewachsen und am detailreichsten.
 
 Technische Regeln für JEDES Bild:
-- PNG mit echtem transparentem Hintergrund (kein Weiß, kein Schachbrettmuster, keine Landschaft)
+- Format WebP mit echtem transparentem Hintergrund (Alpha-Kanal; kein Weiß, kein Schachbrettmuster, keine Landschaft). Gern auch als animiertes WebP (z. B. Atmen, Blinzeln, Schwanzwedeln), dann als Endlosschleife.
 - quadratisch, 1024 × 1024 Pixel
 - Figur mittig, füllt etwa 80 % der Bildhöhe, steht mit den Füßen knapp über dem unteren Rand
 - kein Text, keine Schrift, kein Rahmen, kein Bodenschatten
@@ -60,7 +60,7 @@ Technische Regeln für JEDES Bild:
 Pack zum Schluss alles in eine ZIP-Datei namens [Paketname].zip, ohne Unterordner, mit genau diesen Dateinamen und zusätzlich einer Datei pack.json mit diesem Inhalt:
 {"name": "[Paketname]", "petName": "[Name des Tierchens]"}
 
-Wenn du nicht alle 25 Bilder auf einmal schaffst, fang mit egg.png und den 6 baby-Bildern an und gib mir dazu schon die ZIP. Fehlende Bilder ersetzt die App automatisch durch das normale Bild."""
+Wenn du nicht alle 25 Bilder auf einmal schaffst, fang mit egg.webp und den 6 baby-Bildern an und gib mir dazu schon die ZIP. Fehlende Bilder ersetzt die App automatisch durch das normale Bild."""
 
 @Composable
 fun HelpDialog(onDismiss: () -> Unit) {
@@ -85,20 +85,20 @@ fun HelpDialog(onDismiss: () -> Unit) {
                 Mono(
                     "Graufuchs.zip\n" +
                         "├─ pack.json        (optional)\n" +
-                        "├─ egg.png\n" +
-                        "├─ baby.png         (Pflicht, mindestens dieses)\n" +
-                        "├─ baby_happy.png\n" +
-                        "├─ baby_sad.png\n" +
-                        "├─ baby_hungry.png\n" +
-                        "├─ baby_sick.png\n" +
-                        "├─ baby_sleeping.png\n" +
-                        "├─ child.png … child_sleeping.png\n" +
-                        "├─ teen.png … teen_sleeping.png\n" +
-                        "└─ adult.png … adult_sleeping.png",
+                        "├─ egg.webp\n" +
+                        "├─ baby.webp         (Pflicht, mindestens dieses)\n" +
+                        "├─ baby_happy.webp\n" +
+                        "├─ baby_sad.webp\n" +
+                        "├─ baby_hungry.webp\n" +
+                        "├─ baby_sick.webp\n" +
+                        "├─ baby_sleeping.webp\n" +
+                        "├─ child.webp … child_sleeping.webp\n" +
+                        "├─ teen.webp … teen_sleeping.webp\n" +
+                        "└─ adult.webp … adult_sleeping.webp",
                 )
                 P("pack.json enthält den Namen des Pakets und optional den Namen des Tierchens:")
                 Mono("{\"name\": \"Graufuchs\", \"petName\": \"Grauli\"}")
-                P("Deutsche Namen gehen auch: ei, baby, kind, jugendlich, erwachsen bzw. 1 bis 5, und für die Laune gluecklich, traurig, hungrig, krank, schlaeft (z. B. „kind_traurig.png“). Unterordner im ZIP sind egal. Fehlt ein Bild, nimmt die App das normale Bild der Stufe, und fehlt eine ganze Stufe, das Bild der nächsten Stufe.")
+                P("Deutsche Namen gehen auch: ei, baby, kind, jugendlich, erwachsen bzw. 1 bis 5, und für die Laune gluecklich, traurig, hungrig, krank, schlaeft (z. B. „kind_traurig.webp“). Unterordner im ZIP sind egal. Fehlt ein Bild, nimmt die App das normale Bild der Stufe, und fehlt eine ganze Stufe, das Bild der nächsten Stufe.")
 
                 H("Was die Bilder zeigen sollen")
                 P("Stufen: Das Tierchen wächst mit dem Level. Ei (vor dem Schlüpfen), Baby (ab Level 1), Kind (ab Level 5), Jugendlich (ab Level 10), Erwachsen (ab Level 20). Es ist immer dieselbe Figur, die älter wird: Baby klein und rund mit großem Kopf, Erwachsen groß und detailreich.")
@@ -110,12 +110,12 @@ fun HelpDialog(onDismiss: () -> Unit) {
                 MoodLine("_sleeping (schläft)", "Augen zu, eingerollt oder liegend. „Zzz“ und Dunkelheit zeichnet die App selbst dazu.")
 
                 H("So machst du gute Bilder")
-                P("• PNG mit echtem transparentem Hintergrund. Weiß oder ein gemaltes Schachbrettmuster sieht in der App wie ein Kasten aus.\n" +
+                P("• Format: WebP mit echtem transparentem Hintergrund (Alpha-Kanal). Weiß oder ein gemaltes Schachbrettmuster sieht in der App wie ein Kasten aus.\n" +
                     "• Quadratisch, ideal 1024 × 1024 Pixel (die App verkleinert auf 768).\n" +
                     "• Figur mittig, etwa 80 % der Bildhöhe, Füße knapp über dem unteren Rand.\n" +
                     "• Alle Bilder einer Stufe gleich groß und gleich positioniert, sonst springt die Figur beim Launenwechsel.\n" +
                     "• Kein Text, kein Rahmen, kein Bodenschatten (den Schatten zeichnet die App).\n" +
-                    "• Animierte GIF- oder WebP-Dateien funktionieren auch, z. B. für Schwanzwedeln. Standbilder bewegen sich in der App automatisch (atmen, schweben, hüpfen).")
+                    "• Animiertes WebP funktioniert auch, z. B. für Schwanzwedeln oder Blinzeln (als Endlosschleife). Standbilder bewegen sich in der App automatisch (atmen, schweben, hüpfen).")
                 P("Tipp: Bildgeneratoren liefern oft einen weißen Hintergrund. Dann die Bilder vorher freistellen lassen, zum Beispiel mit einem Online-Tool zum Hintergrund entfernen.")
 
                 H("Vorlage für ChatGPT")

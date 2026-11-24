@@ -366,9 +366,26 @@ private fun BubblesGame(onDone: (Int, Int, Int) -> Unit) {
                 .fillMaxSize()
                 .background(Brush.verticalGradient(listOf(Color(0xFFA9DDFB), Color(0xFFE9F7FF))), RoundedCornerShape(20.dp))
                 .pointerInput(Unit) {
-                    detectTapGestures { p ->
-                        val hit = bubbles.lastOrNull { (Offset(it.x, it.y) - p).getDistance() < it.r * 1.15f }
-                        if (hit != null && timeLeft > 0f) { bubbles.remove(hit); popped++; pops += Offset(hit.x, hit.y) to System.currentTimeMillis() }
+                    // Platzen schon beim Berühren (nicht erst beim Loslassen), auch mehrere Finger
+                    awaitPointerEventScope {
+                        while (true) {
+                            val ev = awaitPointerEvent()
+                            ev.changes.filter { it.pressed && !it.previousPressed }.forEach { ch ->
+                                val p = ch.position
+                                val t = frame / 1e9f
+                                // gleiche Position wie gezeichnet (inkl. Seitwärts-Wackeln), großzügige Trefferfläche
+                                val hit = bubbles.minByOrNull { b ->
+                                    (Offset(b.x + kotlin.math.sin(t * 2f + b.phase) * b.r * 0.25f, b.y) - p).getDistance() / b.r
+                                }?.takeIf { b ->
+                                    (Offset(b.x + kotlin.math.sin(t * 2f + b.phase) * b.r * 0.25f, b.y) - p).getDistance() < b.r * 1.4f
+                                }
+                                if (hit != null && timeLeft > 0f) {
+                                    bubbles.remove(hit); popped++
+                                    pops += Offset(hit.x, hit.y) to System.currentTimeMillis()
+                                    ch.consume()
+                                }
+                            }
+                        }
                     }
                 },
         ) {

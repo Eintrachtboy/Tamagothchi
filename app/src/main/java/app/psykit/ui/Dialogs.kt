@@ -66,11 +66,11 @@ fun StatsDialog(s: PetState, onDismiss: () -> Unit) {
                 else {
                     Text("KP ${st.maxHp} · Angriff ${st.attack} · Abwehr ${st.defense}")
                     Text("Tempo ${st.speed} · Psi ${st.psi}")
-                    Text("Attacken: " + c.moves.joinToString { it.name })
+                    Text("Attacken: " + c.moves.joinToString { it.label })
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "Das Kampfsystem kommt in einer späteren Version. Level, Pflege und deine Schritte machen dein Tierchen schon jetzt stärker.",
+                    "✨ ${s.stardust} Sternenstaub · 🗝️ ${s.keys} Schlüssel · Bosse besiegt: ${s.bossesBeaten.size}. Level, Training, Pflege und Schritte machen dein Tierchen stärker.",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

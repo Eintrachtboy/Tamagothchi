@@ -74,8 +74,10 @@ fun PetScene(
     interaction: Modifier = Modifier,
     dim: Float = 0f,
     floating: Boolean = true,
+    wear: Wearables? = null,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
+    val dressed = wear?.takeIf { stage != Stage.EGG && !it.empty }
     val anim = rememberInfiniteTransition(label = "idle")
     val bob by anim.animateFloat(
         0f, 1f, infiniteRepeatable(tween(if (sleeping) 2600 else 1400), RepeatMode.Reverse), label = "bob",
@@ -156,6 +158,7 @@ fun PetScene(
             }
             for (i in 0 until poops) drawPoop(Offset(w * (0.14f + i * 0.11f), h * 0.93f), h * 0.07f)
         }
+        dressed?.let { DecoLayer(it.deco) }
 
         // Figur: eigenes Bild (Standbild oder animiertes GIF/WebP) oder gezeichnete Standardfigur
         if (custom != null) {
@@ -202,6 +205,11 @@ fun PetScene(
             } else if (custom.image != null) {
                 Image(bitmap = custom.image, contentDescription = "Dein Tierchen", contentScale = ContentScale.Fit, modifier = figure)
             }
+            if (dressed != null && (dressed.head != null || dressed.eyes != null)) {
+                val iw = custom.image?.width ?: 0
+                val ih = custom.image?.height ?: 0
+                Canvas(figure) { drawWear(dressed, imageHead(iw, ih, dressed.anchor)) }
+            }
         } else {
             Canvas(
                 Modifier.fillMaxSize().padding(top = 24.dp).graphicsLayer {
@@ -210,7 +218,9 @@ fun PetScene(
                     translationX = if (shake.value < 1f) sin(shake.value * 6f * PI.toFloat()) * 14f * (1f - shake.value) else 0f
                 },
             ) {
-                drawPsykit(stage, mood, blink, -bob * size.height * (if (sleeping) 0.015f else 0.04f), swing, wobble)
+                val bobPx = -bob * size.height * (if (sleeping) 0.015f else 0.04f)
+                drawPsykit(stage, mood, blink, bobPx, swing, wobble)
+                if (dressed != null) drawWear(dressed, psykitHead(stage, bobPx))
             }
         }
 

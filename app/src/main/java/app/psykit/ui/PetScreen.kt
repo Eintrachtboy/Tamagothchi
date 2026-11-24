@@ -288,6 +288,7 @@ fun PetScreen(vm: PetViewModel) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Header(s, onPets = { showPets = true }, onInfo = { showStats = true }, onSettings = { showSettings = true })
+            if (!isEgg) StatRings(s)
 
             PetScene(
                 stage = s.stage, mood = s.mood, sleeping = s.sleeping, poops = s.poops, phase = phase,
@@ -409,17 +410,6 @@ fun PetScreen(vm: PetViewModel) {
                                 Button(onClick = { if (vm.checkPlay() == null) game = GameKind.BERRIES }) { Text("Starten") }
                             }
                         }
-                    }
-                }
-
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StatBar("🍙 Sattheit", s.satiety)
-                        StatBar("💖 Laune", s.happiness)
-                        StatBar("🫧 Hygiene", s.hygiene)
-                        StatBar("⚡ Energie", s.energy)
-                        StatBar("➕ Gesundheit", s.health)
-                        StatBar("🤝 Vertrauen", s.trust)
                     }
                 }
             }
@@ -696,6 +686,38 @@ private fun StepsCard(
                         "Alle ${PetEngine.STEPS_PER_DIRT} Schritte gibt es einen Schmutzfleck zum Putzen.",
                         style = MaterialTheme.typography.labelSmall,
                     )
+                }
+            }
+        }
+    }
+}
+
+/** Statuswerte als Ringe um ihr Symbol, direkt unter der EP-Leiste. */
+@Composable
+private fun StatRings(s: PetState) {
+    val stats = listOf(
+        Triple("🍙", "Sattheit", s.satiety), Triple("💖", "Laune", s.happiness), Triple("🫧", "Hygiene", s.hygiene),
+        Triple("⚡", "Energie", s.energy), Triple("➕", "Gesundheit", s.health), Triple("🤝", "Vertrauen", s.trust),
+    )
+    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+            stats.forEach { (icon, label, value) ->
+                val v = value.coerceIn(0f, 100f)
+                val color = when { v < 25f -> Color(0xFFE5484D); v < 50f -> Color(0xFFF5A524); else -> Color(0xFF46A758) }
+                val track = MaterialTheme.colorScheme.surfaceVariant
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                        Canvas(Modifier.fillMaxSize()) {
+                            val sw = 4.5.dp.toPx()
+                            val inset = sw / 2
+                            val arcSize = androidx.compose.ui.geometry.Size(size.width - sw, size.height - sw)
+                            drawArc(track, 0f, 360f, false, topLeft = Offset(inset, inset), size = arcSize, style = Stroke(sw))
+                            drawArc(color, -90f, 360f * v / 100f, false, topLeft = Offset(inset, inset), size = arcSize, style = Stroke(sw, cap = StrokeCap.Round))
+                        }
+                        Text(icon, fontSize = 18.sp)
+                    }
+                    Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, fontSize = 10.sp)
+                    Text("${v.toInt()}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                 }
             }
         }

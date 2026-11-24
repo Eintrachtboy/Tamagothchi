@@ -21,7 +21,8 @@ object LevelSystem {
             events += "Level $level erreicht!"
         }
         if (level >= MAX_LEVEL) exp = 0
-        val newStage = Stage.forLevel(level)
+        val ageDays = (s.lastUpdate - s.bornAt) / 86_400_000L
+        val newStage = Stage.next(s.stage, level, ageDays)
         if (newStage != s.stage) events += "${s.name} hat sich entwickelt: ${newStage.displayName}!"
         return s.copy(level = level, exp = exp, totalExp = s.totalExp + amount, stage = newStage) to events
     }

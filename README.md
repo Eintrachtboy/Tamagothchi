@@ -36,13 +36,13 @@ Neue Versionen einfach über die alte installieren, der Spielstand bleibt erhalt
 
 EP gibt es fürs Kümmern, Spielen, Schritte und passiv für jede Stunde in gutem Zustand.
 
-| Stufe | ab Level |
-|---|---|
-| Ei | schlüpft nach 2 Minuten |
-| Baby | 1 |
-| Kind | 5 |
-| Jugendlich | 10 |
-| Erwachsen | 20 |
+| Stufe | ab Level | und frühestens |
+|---|---|---|
+| Ei | – | schlüpft nach 2 Minuten |
+| Baby | 1 | – |
+| Kind | 8 | am 3. Tag |
+| Jugendlich | 18 | nach 12 Tagen |
+| Erwachsen | 30 | nach 30 Tagen |
 
 ## Eigene Bilder
 

@@ -69,6 +69,9 @@ object PetEngine {
             st = tick(st, dt / 60_000f, t, zone)
         }
         st = st.copy(lastUpdate = now)
+        // Mindestalter erreicht? Dann jetzt entwickeln
+        val grown = Stage.next(st.stage, st.level, (now - st.bornAt) / 86_400_000L)
+        if (grown != st.stage) st = st.copy(stage = grown)
         val today = epochDay(now, zone)
         if (st.questDay != today) st = st.copy(questDay = today, questProgress = emptyMap(), questsClaimed = emptyList())
         return st

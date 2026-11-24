@@ -120,10 +120,19 @@ class PetEngineTest {
 
     @Test fun levelUpAndEvolve() {
         val s = hatched(at(12))
-        val (ns, events) = LevelSystem.addExp(s, 500)
-        assertTrue(ns.level >= 5)
+        // Level reicht, aber noch zu jung: bleibt Baby
+        val (young, _) = LevelSystem.addExp(s, 500)
+        assertTrue(young.level >= 8)
+        assertEquals(Stage.BABY, young.stage)
+        // Nach 2 Tagen entwickelt es sich von selbst
+        val older = PetEngine.advance(young.copy(satiety = 100f), young.lastUpdate + 2L * 24 * hour + 60_000, zone)
+        assertEquals(Stage.CHILD, older.stage)
+        // Mit genug Alter sofort beim Levelaufstieg
+        val (ns, events) = LevelSystem.addExp(s.copy(bornAt = s.bornAt - 3L * 24 * hour), 500)
         assertEquals(Stage.CHILD, ns.stage)
         assertTrue(events.any { "entwickelt" in it })
+        // Nie zurückentwickeln
+        assertEquals(Stage.TEEN, Stage.next(Stage.TEEN, 9, 5))
     }
 
     @Test fun stepsGiveExp() {

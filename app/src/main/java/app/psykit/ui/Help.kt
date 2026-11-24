@@ -101,7 +101,7 @@ fun HelpDialog(onDismiss: () -> Unit) {
                 P("Deutsche Namen gehen auch: ei, baby, kind, jugendlich, erwachsen bzw. 1 bis 5, und für die Laune gluecklich, traurig, hungrig, krank, schlaeft (z. B. „kind_traurig.webp“). Unterordner im ZIP sind egal. Fehlt ein Bild, nimmt die App das normale Bild der Stufe, und fehlt eine ganze Stufe, das Bild der nächsten Stufe.")
 
                 H("Was die Bilder zeigen sollen")
-                P("Stufen: Das Tierchen wächst mit dem Level. Ei (vor dem Schlüpfen), Baby (ab Level 1), Kind (ab Level 5), Jugendlich (ab Level 10), Erwachsen (ab Level 20). Es ist immer dieselbe Figur, die älter wird: Baby klein und rund mit großem Kopf, Erwachsen groß und detailreich.")
+                P("Stufen: Das Tierchen wächst mit dem Level. Ei (vor dem Schlüpfen), Baby (nach dem Schlüpfen), Kind (ab Level 8, frühestens am 3. Tag), Jugendlich (ab Level 18, frühestens nach 12 Tagen), Erwachsen (ab Level 30, frühestens nach 30 Tagen). Es ist immer dieselbe Figur, die älter wird: Baby klein und rund mit großem Kopf, Erwachsen groß und detailreich.")
                 MoodLine("normal", "wach und zufrieden. Wird am häufigsten gezeigt und ersetzt jedes fehlende Bild.")
                 MoodLine("_happy (glücklich)", "lacht, strahlt, gern mit kleinen Funken. Erscheint bei sehr guter Laune.")
                 MoodLine("_sad (traurig)", "hängende Ohren, Blick nach unten, evtl. Tränchen. Bei schlechter Laune oder wenn es schmutzig ist.")

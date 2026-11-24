@@ -17,7 +17,7 @@ enum class Mood(val label: String) {
             s.health < 30f -> SICK
             s.satiety < 25f -> HUNGRY
             s.hygiene < 25f || s.poops >= 2 -> DIRTY
-            s.energy < 20f -> TIRED
+            s.energy < 20f || s.sluggish -> TIRED
             s.happiness < 30f -> SAD
             s.happiness >= 75f && s.satiety >= 50f -> HAPPY
             else -> OK

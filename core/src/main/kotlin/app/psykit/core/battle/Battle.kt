@@ -20,14 +20,14 @@ data class BattleStats(val maxHp: Int, val attack: Int, val defense: Int, val sp
         fun of(p: PetState): BattleStats {
             val lv = p.level
             val stamina = (p.stepsRedeemedTotal / 2000).toInt().coerceAtMost(40)
-            val form = ((p.health + p.happiness) / 200f).coerceIn(0.5f, 1f)
+            val form = ((p.health + p.happiness + p.trust) / 300f).coerceIn(0.5f, 1f)
             fun f(x: Int) = (x * form).toInt().coerceAtLeast(1)
             return BattleStats(
                 maxHp = f(20 + lv * 5 + stamina * 2),
-                attack = f(5 + lv * 2),
-                defense = f(5 + lv * 2 + stamina / 2),
-                speed = f(5 + lv * 2 + stamina),
-                psi = f(8 + lv * 3),
+                attack = f(5 + lv * 2 + p.trainAtk * 2),
+                defense = f(5 + lv * 2 + stamina / 2 + p.trainDef * 2),
+                speed = f(5 + lv * 2 + stamina + p.trainSpd * 2),
+                psi = f(8 + lv * 3 + p.trainPsi * 2),
             )
         }
     }

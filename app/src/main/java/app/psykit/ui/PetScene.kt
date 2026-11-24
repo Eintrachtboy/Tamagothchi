@@ -14,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.psykit.core.engine.DayPhase
 import app.psykit.core.model.Mood
+import app.psykit.core.model.Reaction
 import app.psykit.core.model.Stage
 import app.psykit.sprites.Sprite
 import android.graphics.ImageDecoder
@@ -67,9 +69,11 @@ fun PetScene(
     phase: DayPhase,
     custom: Sprite?,
     customIsVariant: Boolean,
-    petPulse: Int,
-    onTapPet: () -> Unit,
+    reaction: ReactionEvent,
     modifier: Modifier = Modifier,
+    interaction: Modifier = Modifier,
+    dim: Float = 0f,
+    overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val anim = rememberInfiniteTransition(label = "idle")
     val bob by anim.animateFloat(
@@ -100,12 +104,18 @@ fun PetScene(
 
     val hearts = remember { Animatable(1f) }
     val hop = remember { Animatable(1f) }
-    LaunchedEffect(petPulse) {
-        if (petPulse > 0) {
-            launch { hop.snapTo(0f); hop.animateTo(1f, tween(650)) }
-            hearts.snapTo(0f); hearts.animateTo(1f, tween(1300))
+    val shake = remember { Animatable(1f) }
+    LaunchedEffect(reaction.id) {
+        if (reaction.id == 0) return@LaunchedEffect
+        when (reaction.reaction) {
+            Reaction.LOVE -> { launch { hop.snapTo(0.3f); hop.animateTo(1f, tween(500)) }; hearts.snapTo(0f); hearts.animateTo(1f, tween(1300)) }
+            Reaction.JUMP -> { launch { hop.snapTo(0f); hop.animateTo(1f, tween(800)) }; hearts.snapTo(0f); hearts.animateTo(1f, tween(1300)) }
+            Reaction.HAPPY -> { hop.snapTo(0.4f); hop.animateTo(1f, tween(450)) }
+            Reaction.ANNOYED, Reaction.SPIT -> { shake.snapTo(0f); shake.animateTo(1f, tween(600)) }
+            else -> {}
         }
     }
+    val jumpHeight = if (reaction.reaction == Reaction.JUMP) 110f else 60f
     val stars = remember { List(28) { Offset(Random.nextFloat(), Random.nextFloat() * 0.6f) } }
     val night = phase == DayPhase.NIGHT
     val lightsOff = sleeping && night
@@ -113,10 +123,10 @@ fun PetScene(
     Box(
         modifier
             .fillMaxWidth()
-            .height(320.dp)
+            .height(340.dp)
             .clip(RoundedCornerShape(28.dp))
             .background(Brush.verticalGradient(skyColors(phase)))
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onTapPet),
+            .then(interaction),
     ) {
         // Hintergrund: Himmel, Sonne/Mond, Sterne, Boden
         Canvas(Modifier.fillMaxSize()) {
@@ -163,7 +173,8 @@ fun PetScene(
                 .graphicsLayer {
                     val jump = if (hop.value < 1f) sin(hop.value * PI.toFloat()) else 0f
                     transformOrigin = TransformOrigin(0.5f, 1f)
-                    translationY = -bob * amp + sink - jump * 60f
+                    translationY = -bob * amp + sink - jump * jumpHeight
+                    translationX = if (shake.value < 1f) sin(shake.value * 6f * PI.toFloat()) * 14f * (1f - shake.value) else 0f
                     // Atmen: leicht strecken und stauchen
                     val b = breath * (if (sleeping) 0.035f else 0.02f)
                     scaleX = 1f - b + jump * 0.06f
@@ -190,7 +201,13 @@ fun PetScene(
                 Image(bitmap = custom.image, contentDescription = "Dein Tierchen", contentScale = ContentScale.Fit, modifier = figure)
             }
         } else {
-            Canvas(Modifier.fillMaxSize().padding(top = 24.dp)) {
+            Canvas(
+                Modifier.fillMaxSize().padding(top = 24.dp).graphicsLayer {
+                    val jump = if (hop.value < 1f) sin(hop.value * PI.toFloat()) else 0f
+                    translationY = -jump * jumpHeight
+                    translationX = if (shake.value < 1f) sin(shake.value * 6f * PI.toFloat()) * 14f * (1f - shake.value) else 0f
+                },
+            ) {
                 drawPsykit(stage, mood, blink, -bob * size.height * (if (sleeping) 0.015f else 0.04f), swing, wobble)
             }
         }
@@ -209,8 +226,23 @@ fun PetScene(
             }
         }
 
-        // Licht aus: abdunkeln, Zzz
-        if (lightsOff) Box(Modifier.fillMaxSize().background(Color(0x55000018)))
+        // Reaktions-Symbole
+        if (shake.value < 1f) {
+            Text(
+                if (reaction.reaction == Reaction.SPIT) "💦" else "💢",
+                fontSize = 30.sp,
+                modifier = Modifier.align(Alignment.TopCenter).offset(x = 60.dp, y = 50.dp).alpha(1f - shake.value),
+            )
+        }
+        if (reaction.reaction == Reaction.JUMP && hearts.value < 1f) {
+            Text("✨", fontSize = 34.sp, modifier = Modifier.align(Alignment.TopCenter).offset(x = (-70).dp, y = (60 - hearts.value * 30).dp).alpha(1f - hearts.value))
+        }
+
+        overlay()
+
+        // Licht aus / gedimmt: abdunkeln, Zzz
+        val darkness = maxOf(dim, if (lightsOff) 0.35f else 0f)
+        if (darkness > 0f) Box(Modifier.fillMaxSize().background(Color(0xFF000018).copy(alpha = darkness * 0.75f)))
         if (sleeping) {
             Text(
                 "Z z z",

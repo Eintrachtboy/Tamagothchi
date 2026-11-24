@@ -35,7 +35,29 @@ data class PetState(
     // Statistik / spätere Kämpfe
     val gamesWon: Int = 0,
     val battlesWon: Int = 0,
+    // Beziehung: Vertrauen 0..100 und Erinnerung, wie es behandelt wurde
+    val trust: Float = 30f,
+    val kindCount: Int = 0,
+    val annoyCount: Int = 0,
+    // Essen: entdeckte Vorlieben, Süßigkeiten-Zähler, träge bis
+    val knownLikes: List<Food> = emptyList(),
+    val knownDislikes: List<Food> = emptyList(),
+    val sweetsWindowStart: Long = 0,
+    val sweetsCount: Int = 0,
+    val sluggishUntil: Long = 0,
+    // Kraulstelle: Tag (epochDay), an dem sie gefunden wurde
+    val scratchFoundDay: Long = -1,
+    // Schmutz durch Spaziergänge
+    val walkSteps: Long = 0,
+    val dirt: Int = 0,
+    // Training aus Spielen (für das spätere Kampfsystem)
+    val trainAtk: Int = 0,
+    val trainDef: Int = 0,
+    val trainSpd: Int = 0,
+    val trainPsi: Int = 0,
 ) {
+    val sluggish: Boolean get() = sluggishUntil > lastUpdate
+
     val mood: Mood get() = Mood.of(this)
 
     companion object {

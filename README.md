@@ -14,12 +14,14 @@ Neue Versionen einfach über die alte installieren, der Spielstand bleibt erhalt
 
 | Funktion | Wirkung |
 |---|---|
-| Füttern | Mahlzeit macht satt, Snack macht glücklich (mehr als 3 Snacks pro Stunde geben Bauchweh) |
-| Streicheln | Button oder direkt aufs Tierchen tippen: Laune steigt, Herzchen |
-| Putzen | Entfernt Häufchen, Hygiene auf 100 |
-| Schlafen / Wecken | Nachts (21–7 Uhr) wird es schneller müde. Morgens wacht es von selbst auf. Nachts wecken macht grummelig |
-| Spielen | Minispiel „Wohin schaut es?“, 5 Runden. Treffer bringen EP und Laune |
-| Schritte | 100 Schritte = 1 EP, je 500 Schritte +5 Laune. Gezählt wird mit dem Schrittsensor des Handys |
+| Füttern | Essen aus der Leiste in den Mund ziehen. Jedes Tierchen hat 2 geheime Lieblingsessen (❤️) und 1, das es ausspuckt (👎). Mehr als 3 Süßigkeiten in 2 Stunden machen träge |
+| Streicheln | Mit dem Finger über das Tierchen wischen: langsam beruhigt, zu schnell nervt. Je mehr Vertrauen, desto mehr Kuscheln am Stück. Finger gedrückt halten = kraulen; jeden Tag ist eine andere Körperstelle die geheime Lieblingsstelle (Freudensprung + Vertrauensbonus) |
+| Putzen | Mit dem Schwamm Flecken einschäumen, dann mit der Dusche abspülen. Nicht eingeschäumte Stellen werden nicht sauber. Häufchen mit der Dusche wegspülen. Nach Spaziergängen (alle 1500 Schritte) gibt es neue Schmutzflecken |
+| Schlafen / Wecken | Decke von unten hochziehen und Licht mit dem Regler dimmen. Optional ein Schlaflied ins Mikrofon summen, dann schläft es sofort ein. Nachts wecken macht grummelig |
+| Spielen | Jeden Tag ein anderes Spiel: „Wo steckt es?“ (3 Wolken mischen sich), Psi-Memory, Seifenblasen. Gute Ergebnisse trainieren Kampfwerte |
+| Bonus | Beerenfang: Handy kippen, fallende Beeren fangen, goldene Beeren geben Extra-EP |
+| Schritte | 100 Schritte = 1 EP. Gezählt wird mit dem Schrittsensor des Handys |
+| Vertrauen | Das Tierchen merkt sich, wie du es behandelst. Vernachlässigen und Nerven senkt das Vertrauen, liebevolle Pflege erhöht es |
 | Werte | Kampfwerte als Vorbereitung für das spätere Kampfsystem |
 
 - Alle Werte sinken in **echter Zeit**, auch wenn die App zu ist (bis zu 7 Tage werden nachgerechnet).

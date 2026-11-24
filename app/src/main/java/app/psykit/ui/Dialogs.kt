@@ -40,51 +40,6 @@ import app.psykit.core.battle.PetCombatant
 import app.psykit.core.model.PetState
 import app.psykit.core.model.Stage
 import app.psykit.sprites.SpriteVariant
-import kotlin.random.Random
-
-/** Minispiel „Wohin schaut es?“: 5 Runden links oder rechts raten. */
-@Composable
-fun GameDialog(name: String, onFinish: (wins: Int, rounds: Int) -> Unit, onCancel: () -> Unit) {
-    val rounds = 5
-    var round by remember { mutableIntStateOf(0) }
-    var wins by remember { mutableIntStateOf(0) }
-    var last by remember { mutableStateOf<String?>(null) }
-    val done = round >= rounds
-
-    fun guess(left: Boolean) {
-        val looksLeft = Random.nextBoolean()
-        val ok = looksLeft == left
-        if (ok) wins++
-        round++
-        last = (if (looksLeft) "⬅️ $name schaut nach links. " else "$name schaut nach rechts ➡️. ") +
-            if (ok) "Richtig!" else "Daneben!"
-    }
-
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text("Wohin schaut $name?") },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                Text(if (done) "Fertig!" else "Runde ${round + 1} von $rounds", fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(8.dp))
-                Text(last ?: "Rate, in welche Richtung $name gleich schaut.", textAlign = TextAlign.Center)
-                Spacer(Modifier.height(8.dp))
-                Text("Treffer: $wins", style = MaterialTheme.typography.titleMedium)
-                if (!done) {
-                    Spacer(Modifier.height(12.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Button(onClick = { guess(true) }) { Text("⬅️", fontSize = 24.sp) }
-                        Button(onClick = { guess(false) }) { Text("➡️", fontSize = 24.sp) }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            if (done) Button(onClick = { onFinish(wins, rounds) }) { Text("Belohnung abholen") }
-        },
-        dismissButton = { if (!done) TextButton(onClick = onCancel) { Text("Abbrechen") } },
-    )
-}
 
 @Composable
 fun StatsDialog(s: PetState, onDismiss: () -> Unit) {
@@ -98,6 +53,13 @@ fun StatsDialog(s: PetState, onDismiss: () -> Unit) {
                 Text("Gesamt-EP: ${s.totalExp}")
                 Text("Eingelöste Schritte: ${s.stepsRedeemedTotal}")
                 Text("Gewonnene Spiele: ${s.gamesWon}")
+                Spacer(Modifier.height(8.dp))
+                Text("Was ${s.name} sich merkt", fontWeight = FontWeight.Bold)
+                Text("🤝 Vertrauen: ${s.trust.toInt()} / 100")
+                Text("Lieb behandelt: ${s.kindCount}× · Genervt: ${s.annoyCount}×")
+                Text("❤️ Lieblingsessen: " + (s.knownLikes.joinToString { it.emoji + " " + it.label }.ifEmpty { "noch geheim" }))
+                Text("👎 Mag nicht: " + (s.knownDislikes.joinToString { it.emoji + " " + it.label }.ifEmpty { "noch unbekannt" }))
+                Text("Training: Angriff +${s.trainAtk} · Abwehr +${s.trainDef} · Tempo +${s.trainSpd} · Psi +${s.trainPsi}")
                 Spacer(Modifier.height(8.dp))
                 Text("Kampfwerte", fontWeight = FontWeight.Bold)
                 if (s.stage == Stage.EGG) Text("Noch im Ei.")

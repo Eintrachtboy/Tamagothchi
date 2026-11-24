@@ -6,7 +6,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.psykit.core.engine.ActionResult
 import app.psykit.core.engine.PetEngine
+import app.psykit.core.model.Food
+import app.psykit.core.model.GameKind
 import app.psykit.core.model.PetState
+import app.psykit.core.model.Reaction
+import app.psykit.core.model.Zone
 import app.psykit.core.model.Stage
 import app.psykit.data.PetRepository
 import app.psykit.sprites.SpriteNames
@@ -30,9 +34,9 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     private val _message = MutableStateFlow("")
     val message: StateFlow<String> = _message
 
-    /** Zählt hoch, wenn gestreichelt wird (für die Herzchen-Animation). */
-    private val _petPulse = MutableStateFlow(0)
-    val petPulse: StateFlow<Int> = _petPulse
+    /** Letzte Reaktion des Tierchens (für Animationen). */
+    private val _reaction = MutableStateFlow(ReactionEvent(0, Reaction.NONE))
+    val reaction: StateFlow<ReactionEvent> = _reaction
 
     /** Zählt hoch, wenn sich ein eigenes Bild ändert, damit die Anzeige neu lädt. */
     private val _spriteVersion = MutableStateFlow(0)
@@ -59,21 +63,25 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     private fun act(block: (PetState, Long) -> ActionResult) {
         val r = repo.update { s, now -> block(s, now).let { it.state to it } }
         _message.value = r.message
+        if (r.reaction != Reaction.NONE) _reaction.value = ReactionEvent(_reaction.value.id + 1, r.reaction)
     }
 
-    fun feedMeal() = act { s, now -> PetEngine.feedMeal(s, now) }
-    fun feedSnack() = act { s, now -> PetEngine.feedSnack(s, now) }
-    fun pet() {
-        act { s, now -> PetEngine.pet(s, now) }
-        if (!state.value.sleeping && state.value.stage != Stage.EGG) _petPulse.value++
-    }
-    fun clean() = act { s, now -> PetEngine.clean(s, now) }
-    fun toggleSleep() = act { s, now -> PetEngine.toggleSleep(s, now, repo.zone) }
+    fun greet() { _message.value = PetEngine.greeting(state.value, System.currentTimeMillis(), repo.zone) }
+
+    fun feed(food: Food) = act { s, now -> PetEngine.feed(s, food, now) }
+    fun stroke(speedDp: Float) = act { s, now -> PetEngine.stroke(s, speedDp, now) }
+    fun scratch(zone: Zone) = act { s, now -> PetEngine.scratch(s, zone, now, repo.zone) }
+    fun clean(fraction: Float) = act { s, _ -> PetEngine.clean(s, fraction) }
+    fun removePoop() = repo.update { s, _ -> PetEngine.removePoop(s) to Unit }
+    fun putToBed(hummed: Boolean) = act { s, now -> PetEngine.putToBed(s, now, repo.zone, hummed) }
+    fun wake() = act { s, now -> PetEngine.wake(s, now, repo.zone) }
     fun redeemSteps() = act { s, _ -> PetEngine.redeemSteps(s) }
 
     /** Gibt null zurück, wenn gespielt werden darf, sonst den Grund. */
     fun checkPlay(): String? = PetEngine.canPlay(state.value)?.message?.also { _message.value = it }
-    fun finishGame(wins: Int, rounds: Int) = act { s, _ -> PetEngine.playResult(s, wins, rounds) }
+    fun finishGame(kind: GameKind, score: Int, max: Int, bonusExp: Int = 0) =
+        act { s, _ -> PetEngine.gameResult(s, kind, score, max, bonusExp) }
+    fun todaysGame(): GameKind = GameKind.dailyOn(PetEngine.epochDay(System.currentTimeMillis(), repo.zone))
 
     fun rename(name: String) = repo.update { s, _ -> PetEngine.rename(s, name) to Unit }
     fun reset(name: String) { repo.reset(name); _message.value = "Ein neues Ei! Es schlüpft in ein paar Minuten." }
@@ -105,3 +113,5 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() { stopSteps() }
 }
+
+data class ReactionEvent(val id: Int, val reaction: Reaction)

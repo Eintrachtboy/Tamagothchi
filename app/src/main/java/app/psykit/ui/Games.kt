@@ -332,7 +332,7 @@ private fun BubblesGame(onDone: (Int, Int, Int) -> Unit) {
     val max = 35
     val bubbles = remember { ArrayList<Bubble>() }
     var popped by remember { mutableIntStateOf(0) }
-    var timeLeft by remember { mutableFloatStateOf(45f) }
+    var timeLeft by remember { mutableFloatStateOf(30f) }
     var frame by remember { mutableLongStateOf(0L) }
     var area by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
     val pops = remember { ArrayList<Pair<Offset, Long>>() }

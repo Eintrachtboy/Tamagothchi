@@ -103,7 +103,7 @@ class PetRepository private constructor(context: Context) {
     fun reset(name: String) = synchronized(lock) {
         val s = PetState.newEgg(System.currentTimeMillis(), name.ifBlank { "Lumi" })
         save(s); _state.value = s
-        prefs.edit().remove(KEY_STEPS_TODAY).remove(KEY_STEPS_DAY).apply()
+        // Der Tages-Schrittzähler gehört allen Tierchen gemeinsam und bleibt beim Neustart eines Tiers erhalten.
     }
 
     // ---------- Schrittzähler ----------
@@ -118,15 +118,27 @@ class PetRepository private constructor(context: Context) {
             counter >= last -> counter - last
             else -> counter // Handy wurde neu gestartet
         }
+        val now = System.currentTimeMillis()
         val today = LocalDate.now(zone).toString()
-        val stepsToday = if (prefs.getString(KEY_STEPS_DAY, null) == today) prefs.getLong(KEY_STEPS_TODAY, 0) else 0L
+        val sameDay = prefs.getString(KEY_STEPS_DAY, null) == today
+        val stepsToday = if (sameDay) prefs.getLong(KEY_STEPS_TODAY, 0) else 0L
+        // Messpause über Mitternacht: nur den Anteil nach Mitternacht für heute zählen (zeitlich anteilig).
+        val lastAt = prefs.getLong(KEY_LAST_SAMPLE_AT, 0L)
+        val todayDelta = if (sameDay || delta <= 0 || lastAt <= 0 || lastAt >= now) delta
+        else {
+            val midnight = LocalDate.now(zone).atStartOfDay(zone).toInstant().toEpochMilli()
+            val share = ((now - midnight).toDouble() / (now - lastAt)).coerceIn(0.0, 1.0)
+            kotlin.math.round(delta * share).toLong()
+        }
         prefs.edit()
             .putLong(KEY_LAST_COUNTER, counter)
+            .putLong(KEY_LAST_SAMPLE_AT, now)
             .putString(KEY_STEPS_DAY, today)
-            .putLong(KEY_STEPS_TODAY, stepsToday + delta)
+            .putLong(KEY_STEPS_TODAY, stepsToday + todayDelta)
             .apply()
+        // Das Tierchen bekommt alle Schritte gutgeschrieben, nur die Tagesanzeige wird aufgeteilt.
         if (delta > 0) update { s, _ -> PetEngine.addSteps(s, delta) to Unit }
-        _stepsToday.value = stepsToday + delta
+        _stepsToday.value = stepsToday + todayDelta
         delta
     }
 
@@ -147,6 +159,7 @@ class PetRepository private constructor(context: Context) {
         private const val KEY_LAST_COUNTER = "step_counter_last"
         private const val KEY_STEPS_TODAY = "steps_today"
         private const val KEY_STEPS_DAY = "steps_day"
+        private const val KEY_LAST_SAMPLE_AT = "step_sample_at"
         private const val KEY_LAST_NOTIF = "last_notification"
 
         @Volatile private var instance: PetRepository? = null

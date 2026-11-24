@@ -118,7 +118,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val fallback = (sprites.displayName(uri) ?: "Paket").substringBeforeLast('.')
             val (info, unknown) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { packs.import(uri, fallback) }
-            val msg = if (info == null) "Import fehlgeschlagen: keine passenden Bilder gefunden." + (if (unknown.isNotEmpty()) " (${unknown.take(5).joinToString()})" else "")
+            val msg = if (info == null) "Import fehlgeschlagen, das bisherige Paket bleibt unverändert." + (if (unknown.isNotEmpty()) "\n" + unknown.take(8).joinToString("\n") { "• $it" } else " Keine passenden Bilder gefunden.")
             else {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { packs.activate(info.id) }
                 _floating.value = packs.floating
@@ -126,7 +126,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
                 if (info.petName.isNotBlank()) rename(info.petName)
                 _spriteVersion.value++
                 "Paket „${info.name}“ mit ${info.images} Bildern importiert und aktiviert." +
-                    (if (unknown.isNotEmpty()) " Nicht zugeordnet: ${unknown.take(6).joinToString()}." else "")
+                    (if (unknown.isNotEmpty()) "\nHinweise:\n" + unknown.take(8).joinToString("\n") { "• $it" } + (if (unknown.size > 8) "\n… und ${unknown.size - 8} weitere" else "") else "")
             }
             _message.value = msg
             onDone(msg)
@@ -150,24 +150,32 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSprite(stage: Stage, variant: SpriteVariant, uri: Uri) {
         packs.markModified()
-        _message.value = if (sprites.save(stage, variant, uri)) "Neues Bild für „${stage.displayName} · ${variant.label}“ gesetzt."
-        else "Das Bild konnte nicht geladen werden."
+        val r = sprites.save(stage, variant, uri)
+        val what = "„${stage.displayName} · ${variant.label}“"
+        _message.value = when {
+            r is app.psykit.sprites.ImageResult.Ok -> "Neues Bild für $what gesetzt."
+            r.saved -> "Bild für $what gesetzt: ${r.reason()}."
+            else -> "Bild für $what nicht übernommen, das bisherige bleibt: ${r.reason()}."
+        }
         _spriteVersion.value++
     }
     /** Mehrere Bilder auf einmal importieren und anhand der Dateinamen zuordnen. */
     fun importPack(uris: List<Uri>) {
         packs.markModified()
         var ok = 0
-        val unknown = mutableListOf<String>()
+        val notes = mutableListOf<String>()
         uris.forEach { uri ->
             val name = sprites.displayName(uri) ?: "?"
             val target = SpriteNames.guess(name)
-            if (target != null && sprites.save(target.first, target.second, uri)) ok++ else unknown += name
+            if (target == null) { notes += "$name: Dateiname unbekannt, bitte einzeln setzen"; return@forEach }
+            val r = sprites.save(target.first, target.second, uri)
+            if (r.saved) ok++
+            r.reason()?.let { notes += "$name: $it" + if (!r.saved) ", bisheriges Bild bleibt" else "" }
         }
         _spriteVersion.value++
         _message.value = buildString {
             append("$ok Bild(er) importiert.")
-            if (unknown.isNotEmpty()) append(" Nicht zugeordnet: ${unknown.joinToString()}. Diese bitte einzeln setzen.")
+            notes.forEach { append("\n• $it") }
         }
     }
 

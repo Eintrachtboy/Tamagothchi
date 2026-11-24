@@ -43,6 +43,8 @@ data class PackInfo(val id: String, val name: String, val petName: String, val i
  * Jedes Paket liegt unter filesDir/packs/<id>/. Das aktive Paket wird in den Bilder-Ordner kopiert.
  */
 class CharacterPacks(context: Context, private val store: SpriteStore) {
+    companion object { const val MAX_ZIP_BYTES = 150L * 1024 * 1024 }
+
     private val ctx = context.applicationContext
     private val root = File(ctx.filesDir, "packs").apply { mkdirs() }
     private val prefs = ctx.getSharedPreferences("psykit_packs", Context.MODE_PRIVATE)
@@ -70,11 +72,17 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
         return PackInfo(dir.name, m.name.ifBlank { dir.name }, m.petName, images, m.floating, m.head)
     }
 
-    /** Liest ein ZIP ein. Gibt das neue Paket und die nicht zugeordneten Dateinamen zurück. */
+    /**
+     * Liest ein ZIP ein. Gibt das neue Paket und pro Datei den Grund zurück, falls etwas nicht übernommen wurde.
+     *
+     * Ein bestehendes Paket gleichen Namens wird nur ersetzt, wenn alles geklappt hat. Bilder, die im neuen
+     * ZIP fehlen oder fehlschlagen, bleiben aus dem bisherigen Stand erhalten.
+     */
     fun import(uri: Uri, fallbackName: String): Pair<PackInfo?, List<String>> {
         val tmp = File(root, ".import-${System.currentTimeMillis()}").apply { mkdirs() }
         var manifest = PackManifest()
-        val unknown = mutableListOf<String>()
+        val notes = mutableListOf<String>()
+        val failedKeys = mutableSetOf<String>()
         var count = 0
         try {
             ctx.contentResolver.openInputStream(uri)?.use { input ->
@@ -85,41 +93,105 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
                         if (e.isDirectory) continue
                         val base = e.name.substringAfterLast('/').substringAfterLast('\\')
                         if (e.name.contains("__MACOSX") || base.startsWith(".")) continue
-                        val bytes = zip.readBytes()
-                        total += bytes.size
-                        if (total > 150L * 1024 * 1024) break
                         val ext = base.substringAfterLast('.', "").lowercase()
+                        val isImage = ext in setOf("png", "webp", "gif", "jpg", "jpeg")
+                        val target = if (isImage) SpriteNames.guess(base) else null
+                        if (isImage && target == null) { notes += "$base: Dateiname unbekannt (z. B. adult.webp oder baby_happy.webp)"; continue }
+                        val bytes = SpriteStore.readLimited(zip, SpriteStore.MAX_IMAGE_BYTES)
+                        if (bytes.size > SpriteStore.MAX_IMAGE_BYTES) {
+                            // Rest des Eintrags überspringen, um die echte Größe zu melden
+                            var actual = bytes.size.toLong()
+                            val buf = ByteArray(64 * 1024)
+                            while (true) { val n = zip.read(buf); if (n < 0) break; actual += n }
+                            total += actual
+                            if (target != null) failedKeys += SpriteStore.keyOf(target.first, target.second)
+                            notes += "$base: zu groß: ${SpriteStore.mb(actual)}, erlaubt sind ${SpriteStore.mb(SpriteStore.MAX_IMAGE_BYTES.toLong())}"
+                            continue
+                        }
+                        total += bytes.size
+                        if (total > MAX_ZIP_BYTES) {
+                            notes += "Ab $base nicht mehr gelesen: Paket größer als ${SpriteStore.mb(MAX_ZIP_BYTES)}"
+                            break
+                        }
                         when {
-                            base.equals("pack.json", ignoreCase = true) ->
-                                manifest = PackManifest.parse(bytes.decodeToString()) ?: manifest
-                            ext in setOf("png", "webp", "gif", "jpg", "jpeg") -> {
-                                val target = SpriteNames.guess(base)
-                                when {
-                                    target == null -> unknown += "$base (Name unbekannt)"
-                                    SpriteStore.writeImage(tmp, SpriteStore.keyOf(target.first, target.second), bytes) -> count++
-                                    else -> unknown += "$base (Bild nicht lesbar, ${bytes.size / 1024} KB)"
-                                }
+                            base.equals("pack.json", ignoreCase = true) -> {
+                                val m = PackManifest.parse(bytes.decodeToString())
+                                if (m != null) manifest = m else notes += "pack.json: nicht lesbar, wird ignoriert"
+                            }
+                            target != null -> {
+                                val key = SpriteStore.keyOf(target.first, target.second)
+                                val r = SpriteStore.writeImage(tmp, key, bytes)
+                                if (r.saved) count++ else failedKeys += key
+                                r.reason()?.let { notes += "$base: $it" }
                             }
                             ext in setOf("txt", "md") -> {}
-                            else -> unknown += base
+                            else -> notes += "$base: kein Bild, ignoriert"
                         }
                     }
                 }
-            } ?: return null to listOf("Datei konnte nicht geöffnet werden")
-            if (count == 0) { tmp.deleteRecursively(); return null to unknown }
+            } ?: run { tmp.deleteRecursively(); return null to listOf("Datei konnte nicht geöffnet werden") }
+            if (count == 0) { tmp.deleteRecursively(); return null to notes }
+
             val name = manifest.name.ifBlank { fallbackName }
-            val m = manifest.copy(name = name)
-            File(tmp, "pack.json").writeText(m.toJson())
             val dest = File(root, idFor(name))
-            if (activeId == dest.name) activeId = "" // gleiches Paket neu importiert: die neue Version gilt
-            dest.deleteRecursively()
-            tmp.renameTo(dest)
-            return info(dest) to unknown
+            val old = if (dest.isDirectory) runCatching { PackManifest.parse(File(dest, "pack.json").readText()) }.getOrNull() else null
+
+            if (dest.isDirectory) {
+                // Ist das Paket gerade aktiv, zuerst den sichtbaren Stand (inkl. Einzeländerungen) ins Paket schreiben.
+                if (activeId == dest.name) keepCurrent()
+                // Bilder aus dem bisherigen Stand behalten, die im neuen ZIP fehlen oder fehlgeschlagen sind.
+                val newKeys = tmp.listFiles()?.filter { it.extension == "png" || it.extension == "anim" }?.map { it.nameWithoutExtension }?.toSet().orEmpty()
+                dest.listFiles()?.filter { (it.extension == "png" || it.extension == "anim") && it.nameWithoutExtension !in newKeys }?.forEach { f ->
+                    f.copyTo(File(tmp, f.name), overwrite = true)
+                    if (f.nameWithoutExtension in failedKeys) notes += "${f.nameWithoutExtension}: bisheriges Bild bleibt erhalten"
+                }
+            }
+            val m = manifest.copy(
+                name = name,
+                floating = manifest.floating ?: old?.floating,
+                head = manifest.head ?: old?.head,
+                petName = manifest.petName.ifBlank { old?.petName ?: "" },
+                author = manifest.author.ifBlank { old?.author ?: "" },
+            )
+            File(tmp, "pack.json").writeText(m.toJson())
+
+            // Austausch: alter Stand wird erst gelöscht, wenn der neue sicher an seinem Platz liegt.
+            val backup = File(root, ".old-${dest.name}-${System.currentTimeMillis()}")
+            if (dest.exists() && !dest.renameTo(backup)) {
+                tmp.deleteRecursively()
+                return null to (notes + "Paket konnte nicht ersetzt werden, der bisherige Stand bleibt unverändert")
+            }
+            if (!tmp.renameTo(dest)) {
+                if (backup.exists()) backup.renameTo(dest)
+                tmp.deleteRecursively()
+                return null to (notes + "Paket konnte nicht gespeichert werden, der bisherige Stand bleibt unverändert")
+            }
+            backup.deleteRecursively()
+            // Gleiches Paket neu importiert: beim Aktivieren nicht mit dem alten Stand überschreiben.
+            if (activeId == dest.name) activeId = ""
+            return info(dest) to notes
         } catch (e: Exception) {
             tmp.deleteRecursively()
-            return null to listOf("Das ist kein gültiges ZIP (${e.javaClass.simpleName})")
+            return null to (notes + "Das ist kein gültiges ZIP (${e.javaClass.simpleName}). Der bisherige Stand bleibt unverändert")
         }
     }
+
+    /** Übrig gebliebene Ordner eines abgebrochenen Imports aufräumen bzw. wiederherstellen. */
+    private fun recoverLeftovers() {
+        val stale = System.currentTimeMillis() - 10 * 60 * 1000
+        root.listFiles()?.filter { it.lastModified() < stale }?.forEach { f ->
+            when {
+                f.name.startsWith(".import-") -> f.deleteRecursively()
+                f.name.startsWith(".old-") -> {
+                    val id = f.name.removePrefix(".old-").substringBeforeLast('-')
+                    val dest = File(root, id)
+                    if (!dest.exists()) f.renameTo(dest) else f.deleteRecursively()
+                }
+            }
+        }
+    }
+
+    init { runCatching { recoverLeftovers() } }
 
     private fun idFor(name: String): String {
         val s = name.lowercase().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")

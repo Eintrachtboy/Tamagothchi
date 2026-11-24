@@ -85,35 +85,25 @@ class SpriteStore(context: Context, val petId: String = "p1") {
         if (stage == Stage.EGG) emptyList()
         else Stage.entries.filter { it != Stage.EGG && it != stage }.sortedBy { kotlin.math.abs(it.ordinal - stage.ordinal) * 2 + if (it.ordinal > stage.ordinal) 1 else 0 }
 
-    /** Animierte GIF/WebP unverändert übernehmen, damit die Animation erhalten bleibt. */
-    private fun trySaveAnimated(stage: Stage, v: SpriteVariant, uri: Uri): Boolean {
-        val mime = ctx.contentResolver.getType(uri) ?: ""
-        if (mime != "image/gif" && mime != "image/webp") return false
-        val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return false
-        if (bytes.size > 20 * 1024 * 1024) return false
-        val drawable = runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) }.getOrNull()
-        if (drawable !is android.graphics.drawable.AnimatedImageDrawable) return false
-        animFile(stage, v).writeBytes(bytes)
-        file(stage, v).delete()
-        cache.remove(key(stage, v))
-        return true
+    /**
+     * Ein einzelnes Bild übernehmen. Gleiche Regeln und gleiche Größengrenze wie beim ZIP-Import.
+     * Schlägt es fehl, bleibt das bisherige Bild erhalten.
+     */
+    fun save(stage: Stage, v: SpriteVariant, uri: Uri): ImageResult {
+        val bytes = runCatching {
+            ctx.contentResolver.openInputStream(uri)?.use { readLimited(it, MAX_IMAGE_BYTES) }
+        }.getOrNull() ?: return ImageResult.Unreadable(0)
+        if (bytes.size > MAX_IMAGE_BYTES) return ImageResult.TooLarge(sizeOf(uri) ?: bytes.size.toLong(), MAX_IMAGE_BYTES.toLong())
+        val r = writeImage(dir, key(stage, v), bytes)
+        if (r.saved) cache.remove(key(stage, v))
+        return r
     }
 
-    fun save(stage: Stage, v: SpriteVariant, uri: Uri): Boolean = runCatching {
-        if (trySaveAnimated(stage, v, uri)) return true
-        animFile(stage, v).delete()
-        val src = ImageDecoder.decodeBitmap(ImageDecoder.createSource(ctx.contentResolver, uri)) { d, info, _ ->
-            d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-            val max = maxOf(info.size.width, info.size.height)
-            if (max > 768) {
-                val scale = 768f / max
-                d.setTargetSize((info.size.width * scale).toInt(), (info.size.height * scale).toInt())
-            }
+    private fun sizeOf(uri: Uri): Long? = runCatching {
+        ctx.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c ->
+            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else null
         }
-        file(stage, v).outputStream().use { src.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        cache.remove(key(stage, v))
-        true
-    }.getOrDefault(false)
+    }.getOrNull()
 
     /** Dateiname eines ausgewählten Bildes (für den Paket-Import). */
     fun displayName(uri: Uri): String? = runCatching {
@@ -125,26 +115,59 @@ class SpriteStore(context: Context, val petId: String = "p1") {
     companion object {
         fun keyOf(stage: Stage, v: SpriteVariant) = stage.name.lowercase() + v.suffix
 
+        /** Größengrenze pro Bild, gleich für ZIP- und Einzelimport (40 MiB). */
+        const val MAX_IMAGE_BYTES = 40 * 1024 * 1024
+
+        /** Liest höchstens [limit] + 1 Bytes, damit zu große Dateien nicht ganz in den Speicher wandern. */
+        fun readLimited(input: java.io.InputStream, limit: Int): ByteArray {
+            val out = java.io.ByteArrayOutputStream()
+            val buf = ByteArray(64 * 1024)
+            var total = 0L
+            while (true) {
+                val n = input.read(buf)
+                if (n < 0) break
+                total += n
+                if (total > limit) { out.write(buf, 0, n); break }
+                out.write(buf, 0, n)
+            }
+            return out.toByteArray()
+        }
+
+        fun mb(bytes: Long) = String.format(java.util.Locale.GERMANY, "%.1f MB", bytes / 1024.0 / 1024.0)
+
         /**
          * Speichert Bilddaten unter [key] in [dir]: animierte GIF/WebP unverändert als .anim,
          * alles andere als PNG (max. 768 px).
          */
-        fun writeImage(dir: File, key: String, bytes: ByteArray): Boolean {
-            if (bytes.size > 40 * 1024 * 1024) return false
-            if (isAnimated(bytes)) {
+        fun writeImage(dir: File, key: String, bytes: ByteArray): ImageResult {
+            if (bytes.size > MAX_IMAGE_BYTES) return ImageResult.TooLarge(bytes.size.toLong(), MAX_IMAGE_BYTES.toLong())
+            val animated = isAnimated(bytes)
+            if (animated) {
                 val ok = runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) is android.graphics.drawable.AnimatedImageDrawable }.getOrDefault(false)
                 if (ok) {
-                    File(dir, "$key.anim").writeBytes(bytes)
-                    File(dir, "$key.png").delete()
-                    return true
+                    val written = runCatching {
+                        val t = File(dir, "$key.anim.part")
+                        t.writeBytes(bytes)
+                        val f = File(dir, "$key.anim")
+                        f.delete()
+                        check(t.renameTo(f))
+                    }.isSuccess
+                    if (written) { File(dir, "$key.png").delete(); return ImageResult.Ok(true) }
+                    File(dir, "$key.anim.part").delete()
+                    return ImageResult.Unreadable(bytes.size.toLong())
                 }
             }
-            val bmp = decodeScaled(bytes) ?: return false
-            return runCatching {
-                File(dir, "$key.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                File(dir, "$key.anim").delete()
-                true
-            }.getOrDefault(false)
+            val bmp = decodeScaled(bytes) ?: return ImageResult.Unreadable(bytes.size.toLong())
+            val written = runCatching {
+                val t = File(dir, "$key.png.part")
+                t.outputStream().use { check(bmp.compress(Bitmap.CompressFormat.PNG, 100, it)) }
+                val f = File(dir, "$key.png")
+                f.delete()
+                check(t.renameTo(f))
+            }.isSuccess
+            if (!written) { File(dir, "$key.png.part").delete(); return ImageResult.Unreadable(bytes.size.toLong()) }
+            File(dir, "$key.anim").delete()
+            return if (animated) ImageResult.StillOnly(android.os.Build.VERSION.SDK_INT < 28) else ImageResult.Ok(false)
         }
 
         /** Animiert? WebP mit ANIM-Block oder GIF. */
@@ -183,6 +206,27 @@ class SpriteStore(context: Context, val petId: String = "p1") {
         file(stage, v).delete()
         animFile(stage, v).delete()
         cache.remove(key(stage, v))
+    }
+}
+
+/** Ergebnis beim Übernehmen eines Bildes, mit genauem Grund. */
+sealed class ImageResult {
+    /** Gespeichert, und ob als Animation. */
+    data class Ok(val animated: Boolean) : ImageResult()
+    /** Animierte Datei, aber nur das erste Bild wurde übernommen. [oldAndroid] = Android 8 kann keine Animation. */
+    data class StillOnly(val oldAndroid: Boolean) : ImageResult()
+    data class TooLarge(val actual: Long, val limit: Long) : ImageResult()
+    data class Unreadable(val size: Long) : ImageResult()
+
+    val saved get() = this is Ok || this is StillOnly
+
+    /** Grund als kurzer Text, oder null wenn alles geklappt hat. */
+    fun reason(): String? = when (this) {
+        is Ok -> null
+        is StillOnly -> if (oldAndroid) "Animation nur als Standbild übernommen (Animation braucht Android 9 oder neuer)"
+            else "Animation nur als Standbild übernommen (Animation ließ sich nicht abspielen)"
+        is TooLarge -> "zu groß: ${SpriteStore.mb(actual)}, erlaubt sind ${SpriteStore.mb(limit)}"
+        is Unreadable -> "Bild nicht lesbar" + if (size > 0) " (${SpriteStore.mb(size)})" else ""
     }
 }
 

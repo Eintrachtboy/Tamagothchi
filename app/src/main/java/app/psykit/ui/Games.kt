@@ -169,7 +169,7 @@ fun PetIcon(sprite: Sprite?, stage: Stage, mood: Mood, size: Dp, modifier: Modif
 
 @Composable
 private fun HideSeekGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
-    val rounds = 3
+    val rounds = 5
     var round by remember { mutableIntStateOf(0) }
     var score by remember { mutableIntStateOf(0) }
     // slot[i] = an welcher Position (0..2) Wolke i gerade steht
@@ -193,12 +193,12 @@ private fun HideSeekGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -
         phase = "hide"
         delay(900)
         phase = "shuffle"
-        speed = 460 - round * 110
-        repeat(5 + round * 3) {
+        speed = (340 - round * 50).coerceAtLeast(150)
+        repeat(9 + round * 4) {
             val a = Random.nextInt(3); var b = Random.nextInt(3); if (b == a) b = (a + 1) % 3
             val ia = slot.indexOf(a); val ib = slot.indexOf(b)
             slot[ia] = b; slot[ib] = a
-            delay(speed.toLong() + 40)
+            delay(speed.toLong() + 15)
         }
         phase = "guess"
     }
@@ -268,12 +268,12 @@ private fun HideSeekGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -
 
 // ---------------------------------------------------------------- Psi-Memory
 
-private val PSI_SYMBOLS = listOf("☾", "✦", "☯", "◈", "⚛", "✺")
-private val PSI_COLORS = listOf(Color(0xFF7B5CD6), Color(0xFFE0609E), Color(0xFF3A9AD9), Color(0xFF2FA37A), Color(0xFFE08A2E), Color(0xFFB54BC9))
+private val PSI_SYMBOLS = listOf("☾", "✦", "☯", "◈", "⚛", "✺", "✧", "◉")
+private val PSI_COLORS = listOf(Color(0xFF7B5CD6), Color(0xFF7B5CD6), Color(0xFF7B5CD6), Color(0xFF7B5CD6), Color(0xFF7B5CD6), Color(0xFF7B5CD6), Color(0xFF7B5CD6), Color(0xFF7B5CD6))
 
 @Composable
 private fun MemoryGame(onDone: (Int, Int, Int) -> Unit) {
-    val maxTries = 14
+    val maxTries = 16
     val cards = remember { (PSI_SYMBOLS.indices + PSI_SYMBOLS.indices).shuffled() }
     val open = remember { mutableStateListOf<Int>() }
     val matched = remember { mutableStateListOf<Int>() }
@@ -285,7 +285,7 @@ private fun MemoryGame(onDone: (Int, Int, Int) -> Unit) {
         if (open.size == 2) {
             busy = true
             tries++
-            if (cards[open[0]] == cards[open[1]]) { matched += open[0]; matched += open[1]; delay(300) } else delay(800)
+            if (cards[open[0]] == cards[open[1]]) { matched += open[0]; matched += open[1]; delay(250) } else delay(550)
             open.clear()
             busy = false
             if (matched.size == cards.size || tries >= maxTries) { delay(400); onDone(matched.size / 2, PSI_SYMBOLS.size, 0) }
@@ -294,7 +294,7 @@ private fun MemoryGame(onDone: (Int, Int, Int) -> Unit) {
 
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Paare: $pairs / ${PSI_SYMBOLS.size} · Versuche übrig: ${maxTries - tries}", fontWeight = FontWeight.Bold)
-        cards.indices.chunked(3).forEach { row ->
+        cards.indices.chunked(4).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 row.forEach { i ->
                     val faceUp = i in open || i in matched
@@ -326,10 +326,10 @@ private class Bubble(var x: Float, var y: Float, val r: Float, val v: Float, val
 
 @Composable
 private fun BubblesGame(onDone: (Int, Int, Int) -> Unit) {
-    val max = 20
+    val max = 35
     val bubbles = remember { ArrayList<Bubble>() }
     var popped by remember { mutableIntStateOf(0) }
-    var timeLeft by remember { mutableFloatStateOf(20f) }
+    var timeLeft by remember { mutableFloatStateOf(45f) }
     var frame by remember { mutableLongStateOf(0L) }
     var area by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
     val pops = remember { ArrayList<Pair<Offset, Long>>() }
@@ -344,9 +344,9 @@ private fun BubblesGame(onDone: (Int, Int, Int) -> Unit) {
                 if (area.width > 0f) {
                     spawn -= dt
                     if (spawn <= 0f) {
-                        spawn = 0.55f + Random.nextFloat() * 0.35f
-                        val r = area.width * (0.06f + Random.nextFloat() * 0.05f)
-                        bubbles += Bubble(r + Random.nextFloat() * (area.width - 2 * r), area.height + r, r, area.height * (0.22f + Random.nextFloat() * 0.18f), Random.nextFloat() * 6f)
+                        spawn = (0.6f - (30f - timeLeft) * 0.012f).coerceAtLeast(0.3f) + Random.nextFloat() * 0.2f
+                        val r = area.width * (0.045f + Random.nextFloat() * 0.035f)
+                        bubbles += Bubble(r + Random.nextFloat() * (area.width - 2 * r), area.height + r, r, area.height * (0.3f + (30f - timeLeft) * 0.008f + Random.nextFloat() * 0.25f), Random.nextFloat() * 6f)
                     }
                     bubbles.forEach { it.y -= it.v * dt }
                     bubbles.removeAll { it.y < -it.r }
@@ -421,7 +421,7 @@ private fun BerriesGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) ->
     var caught by remember { mutableIntStateOf(0) }
     var golden by remember { mutableIntStateOf(0) }
     var spawned by remember { mutableIntStateOf(0) }
-    var timeLeft by remember { mutableFloatStateOf(30f) }
+    var timeLeft by remember { mutableFloatStateOf(45f) }
     var frame by remember { mutableLongStateOf(0L) }
     var area by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
     var catcherX by remember { mutableFloatStateOf(0.5f) } // 0..1
@@ -450,11 +450,11 @@ private fun BerriesGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) ->
                 catcherX = (catcherX - tilt * 0.12f * dt).coerceIn(0.08f, 0.92f)
                 if (area.width > 0f) {
                     spawn -= dt
-                    val elapsed = 30f - timeLeft
+                    val elapsed = 45f - timeLeft
                     if (spawn <= 0f && timeLeft > 1.5f) {
-                        spawn = (0.9f - elapsed * 0.015f).coerceAtLeast(0.45f)
+                        spawn = (0.75f - elapsed * 0.012f).coerceAtLeast(0.3f)
                         val g = Random.nextFloat() < 0.1f
-                        berries += Berry(0.06f + Random.nextFloat() * 0.88f, -0.05f, (0.28f + elapsed * 0.008f) * (if (g) 1.35f else 1f), g)
+                        berries += Berry(0.06f + Random.nextFloat() * 0.88f, -0.05f, (0.36f + elapsed * 0.01f) * (if (g) 1.4f else 1f), g)
                         spawned++
                     }
                     val catchY = 0.86f
@@ -463,7 +463,7 @@ private fun BerriesGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) ->
                         val b = iter.next()
                         val before = b.y
                         b.y += b.v * dt
-                        if (before < catchY && b.y >= catchY && kotlin.math.abs(b.x - catcherX) < 0.11f) {
+                        if (before < catchY && b.y >= catchY && kotlin.math.abs(b.x - catcherX) < 0.085f) {
                             if (b.golden) golden++ else caught++
                             iter.remove()
                         } else if (b.y > 1.05f) iter.remove()

@@ -53,9 +53,9 @@ import kotlin.random.Random
 
 @Composable
 fun ReactionGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
-    val total = 10
-    // 7 echte Leuchten, 3 Fallen, gemischt
-    val events = remember { (List(7) { true } + List(3) { false }).shuffled() }
+    val total = 15
+    // 10 echte Leuchten, 5 Fallen, gemischt
+    val events = remember { (List(10) { true } + List(5) { false }).shuffled() }
     var index by remember { mutableIntStateOf(0) }
     var score by remember { mutableIntStateOf(0) }
     var state by remember { mutableStateOf("wait") } // wait, glow, trap, result
@@ -69,11 +69,11 @@ fun ReactionGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) 
         if (index >= total) { delay(500); onDone(score, total, 0); return@LaunchedEffect }
         tappedThisRound = false
         state = "wait"
-        delay(900L + Random.nextLong(1600))
+        delay(700L + Random.nextLong(2300))
         if (tappedThisRound) return@LaunchedEffect
         shownAt = System.currentTimeMillis()
         state = if (events[index]) "glow" else "trap"
-        delay(if (events[index]) 900 else 1100)
+        delay(if (events[index]) (600 - index * 15).coerceAtLeast(380).toLong() else 1100L)
         if (!tappedThisRound) {
             if (events[index]) feedback = "Zu langsam!" else { score++; feedback = "Gut widerstanden! 👍" }
             state = "result"
@@ -140,7 +140,7 @@ private val ECHO_SYMBOLS = listOf("♥", "☾", "✦", "☀")
 
 @Composable
 fun EchoGame(onDone: (Int, Int, Int) -> Unit) {
-    val max = 10
+    val max = 15
     val seq = remember { mutableStateListOf<Int>() }
     var lit by remember { mutableIntStateOf(-1) }
     var phase by remember { mutableStateOf("show") } // show, input, fail, win
@@ -149,13 +149,13 @@ fun EchoGame(onDone: (Int, Int, Int) -> Unit) {
     var bestLen by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(round) {
-        if (seq.isEmpty()) repeat(2) { seq += Random.nextInt(4) }
+        if (seq.isEmpty()) repeat(3) { seq += Random.nextInt(4) }
         seq += Random.nextInt(4)
         phase = "show"; pos = 0
         delay(700)
-        val on = (520 - round * 30).coerceAtLeast(280).toLong()
+        val on = (420 - round * 30).coerceAtLeast(200).toLong()
         for (c in seq) {
-            lit = c; delay(on); lit = -1; delay(170)
+            lit = c; delay(on); lit = -1; delay(120)
         }
         phase = "input"
     }
@@ -212,59 +212,114 @@ fun EchoGame(onDone: (Int, Int, Int) -> Unit) {
 
 // ---------------------------------------------------------------- Schattenraten
 
-private val SHADOW_ITEMS = listOf(
-    "🍎" to "Apfel", "🍌" to "Banane", "🍐" to "Birne", "🍇" to "Trauben", "🍓" to "Erdbeere", "🍒" to "Kirschen",
-    "🥕" to "Karotte", "🍄" to "Pilz", "🐟" to "Fisch", "🍙" to "Reisbällchen", "🧁" to "Muffin", "🍦" to "Eis",
-    "☂️" to "Schirm", "🎈" to "Ballon", "⭐" to "Stern", "🌙" to "Mond", "⚽" to "Ball", "🔑" to "Schlüssel",
-    "🎸" to "Gitarre", "✈️" to "Flugzeug", "🚲" to "Fahrrad", "🐌" to "Schnecke", "🦋" to "Schmetterling", "🐢" to "Schildkröte",
-    "🌵" to "Kaktus", "🍁" to "Blatt", "☕" to "Tasse", "🔔" to "Glocke", "🏠" to "Haus", "🦆" to "Ente",
+// Gruppen ähnlicher Dinge: falsche Antworten kommen bevorzugt aus derselben Gruppe (schwerer)
+private val SHADOW_GROUPS: List<List<Pair<String, String>>> = listOf(
+    listOf("🍎" to "Apfel", "🍐" to "Birne", "🍑" to "Pfirsich", "🍊" to "Orange", "🍋" to "Zitrone", "🍒" to "Kirschen", "🍓" to "Erdbeere", "🍇" to "Trauben", "🍌" to "Banane", "🍍" to "Ananas", "🥝" to "Kiwi", "🥭" to "Mango", "🫐" to "Heidelbeeren", "🍉" to "Melone"),
+    listOf("🥕" to "Karotte", "🌽" to "Mais", "🥦" to "Brokkoli", "🍆" to "Aubergine", "🥒" to "Gurke", "🌶️" to "Chili", "🧄" to "Knoblauch", "🧅" to "Zwiebel", "🥔" to "Kartoffel", "🍄" to "Pilz", "🫑" to "Paprika", "🥜" to "Erdnuss"),
+    listOf("🐶" to "Hund", "🐱" to "Katze", "🐭" to "Maus", "🐹" to "Hamster", "🐰" to "Hase", "🦊" to "Fuchs", "🐻" to "Bär", "🐼" to "Panda", "🐨" to "Koala", "🐯" to "Tiger", "🦁" to "Löwe", "🐮" to "Kuh", "🐷" to "Schwein", "🐸" to "Frosch", "🐵" to "Affe"),
+    listOf("🐔" to "Huhn", "🐧" to "Pinguin", "🐦" to "Vogel", "🦆" to "Ente", "🦅" to "Adler", "🦉" to "Eule", "🦜" to "Papagei", "🦢" to "Schwan", "🦩" to "Flamingo", "🕊️" to "Taube", "🦚" to "Pfau"),
+    listOf("🐟" to "Fisch", "🐠" to "Tropenfisch", "🐡" to "Kugelfisch", "🦈" to "Hai", "🐬" to "Delfin", "🐳" to "Wal", "🐙" to "Krake", "🦀" to "Krebs", "🦞" to "Hummer", "🦐" to "Garnele", "🐚" to "Muschel", "🦭" to "Robbe"),
+    listOf("🐌" to "Schnecke", "🦋" to "Schmetterling", "🐛" to "Raupe", "🐝" to "Biene", "🐞" to "Marienkäfer", "🦗" to "Grille", "🕷️" to "Spinne", "🦂" to "Skorpion", "🐜" to "Ameise", "🪲" to "Käfer", "🦟" to "Mücke"),
+    listOf("🚗" to "Auto", "🚕" to "Taxi", "🚌" to "Bus", "🚑" to "Krankenwagen", "🚒" to "Feuerwehr", "🚜" to "Traktor", "🚲" to "Fahrrad", "🛵" to "Roller", "🏍️" to "Motorrad", "✈️" to "Flugzeug", "🚁" to "Hubschrauber", "🚀" to "Rakete", "⛵" to "Segelboot", "🚂" to "Lokomotive"),
+    listOf("⚽" to "Fußball", "🏀" to "Basketball", "🏈" to "Football", "⚾" to "Baseball", "🎾" to "Tennisball", "🏐" to "Volleyball", "🏓" to "Tischtennis", "🏸" to "Federball", "🥊" to "Boxhandschuh", "⛳" to "Golf", "🎳" to "Bowling", "🛹" to "Skateboard"),
+    listOf("🎸" to "Gitarre", "🎹" to "Klavier", "🎺" to "Trompete", "🎻" to "Geige", "🥁" to "Trommel", "🎷" to "Saxofon", "🪗" to "Akkordeon", "🔔" to "Glocke", "🎤" to "Mikrofon", "🎧" to "Kopfhörer"),
+    listOf("🔑" to "Schlüssel", "🔒" to "Schloss", "✂️" to "Schere", "🔨" to "Hammer", "🪛" to "Schraubenzieher", "🔧" to "Schraubenschlüssel", "📎" to "Büroklammer", "📌" to "Pinnnadel", "🖊️" to "Stift", "🪚" to "Säge", "🧲" to "Magnet", "💡" to "Glühbirne"),
+    listOf("☂️" to "Schirm", "👓" to "Brille", "🎩" to "Zylinder", "👑" to "Krone", "👟" to "Turnschuh", "👢" to "Stiefel", "🧤" to "Handschuhe", "🧣" to "Schal", "👜" to "Handtasche", "🎒" to "Rucksack", "🧢" to "Kappe"),
+    listOf("☕" to "Tasse", "🍵" to "Teeschale", "🥛" to "Glas Milch", "🍷" to "Weinglas", "🍼" to "Fläschchen", "🫖" to "Teekanne", "🥄" to "Löffel", "🍴" to "Besteck", "🔪" to "Messer", "🍳" to "Pfanne"),
+    listOf("⭐" to "Stern", "🌙" to "Mond", "☀️" to "Sonne", "☁️" to "Wolke", "⚡" to "Blitz", "❄️" to "Schneeflocke", "🔥" to "Feuer", "💧" to "Tropfen", "🌈" to "Regenbogen", "🌪️" to "Wirbelsturm"),
+    listOf("🌵" to "Kaktus", "🌲" to "Tanne", "🌳" to "Baum", "🌴" to "Palme", "🍁" to "Ahornblatt", "🍀" to "Kleeblatt", "🌻" to "Sonnenblume", "🌹" to "Rose", "🌷" to "Tulpe", "🌼" to "Blume"),
+    listOf("🏠" to "Haus", "🏰" to "Burg", "⛪" to "Kirche", "🗼" to "Turm", "🏭" to "Fabrik", "⛺" to "Zelt", "🏟️" to "Stadion", "🗽" to "Freiheitsstatue", "🌉" to "Brücke"),
+    listOf("🧁" to "Muffin", "🍦" to "Eis", "🍩" to "Donut", "🍪" to "Keks", "🎂" to "Torte", "🍰" to "Kuchen", "🍫" to "Schokolade", "🍭" to "Lutscher", "🥐" to "Croissant", "🥨" to "Brezel", "🍕" to "Pizza", "🍔" to "Burger"),
 )
+private val SHADOW_ITEMS = SHADOW_GROUPS.flatten()
 
 @Composable
 fun ShadowGame(onDone: (Int, Int, Int) -> Unit) {
-    val rounds = 8
+    val rounds = 12
     val picks = remember { SHADOW_ITEMS.shuffled().take(rounds) }
     var round by remember { mutableIntStateOf(0) }
     var score by remember { mutableIntStateOf(0) }
     var answered by remember { mutableStateOf<Int?>(null) }
+    var visible by remember { mutableStateOf(false) }
+    var timeUp by remember { mutableStateOf(false) }
+    var secondsLeft by remember { mutableIntStateOf(0) }
     val options = remember(round) {
         if (round >= rounds) emptyList()
-        else (SHADOW_ITEMS.filter { it != picks[round] }.shuffled().take(3) + picks[round]).shuffled()
+        else {
+            val target = picks[round]
+            val group = SHADOW_GROUPS.first { target in it }
+            val similar = group.filter { it != target }.shuffled().take(4)
+            val other = SHADOW_ITEMS.filter { it != target && it !in similar }.shuffled().take(5 - similar.size)
+            (similar + other + target).shuffled()
+        }
     }
+    // Silhouette leicht gedreht, gespiegelt und verkleinert, damit man genau hinschauen muss
+    val look = remember(round) { Triple(Random.nextInt(-35, 36).toFloat(), Random.nextBoolean(), 0.75f + Random.nextFloat() * 0.35f) }
 
-    LaunchedEffect(round) { if (round >= rounds) { delay(300); onDone(score, rounds, 0) } }
+    LaunchedEffect(round) {
+        if (round >= rounds) { delay(300); onDone(score, rounds, 0); return@LaunchedEffect }
+        timeUp = false
+        delay(600)
+        // blitzt nur kurz auf, jede Runde kürzer (650 ms bis 220 ms)
+        visible = true
+        delay((650 - round * 40).coerceAtLeast(220).toLong())
+        visible = false
+        secondsLeft = 6
+        while (secondsLeft > 0 && answered == null) { delay(1000); if (answered == null) secondsLeft-- }
+        if (answered == null) { timeUp = true; answered = -1 }
+    }
     if (round >= rounds) return
     val target = picks[round]
     val revealed = answered != null
 
-    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Bild ${round + 1} von $rounds · Richtig: $score", fontWeight = FontWeight.Bold)
-        Text(if (!revealed) "Was ist das?" else if (options[answered!!] == target) "Richtig! 🎉" else "Leider nein, das ist: ${target.second}")
+        Text(
+            when {
+                !revealed && visible -> "Jetzt!"
+                !revealed && secondsLeft == 0 -> "Gut aufpassen, gleich blitzt es auf …"
+                !revealed -> "Was war das? Noch $secondsLeft s"
+                timeUp -> "Zeit um! Das war: ${target.first} ${target.second}"
+                options.getOrNull(answered!!) == target -> "Richtig! 🎉"
+                else -> "Leider nein, das war: ${target.first} ${target.second}"
+            },
+        )
         Box(
-            Modifier.fillMaxWidth().height(220.dp).background(Color(0xFFF3EEFF), RoundedCornerShape(24.dp)),
+            Modifier.fillMaxWidth().height(200.dp).background(Color(0xFF1E1830), RoundedCornerShape(24.dp)),
             contentAlignment = Alignment.Center,
         ) {
-            val shadow = if (revealed) Modifier else Modifier
-                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                .drawWithContent {
-                    drawContent()
-                    drawRect(Color(0xFF2B2140), blendMode = BlendMode.SrcIn)
-                }
-            Text(target.first, fontSize = 120.sp, modifier = shadow)
+            when {
+                revealed -> Text(target.first, fontSize = 110.sp)
+                visible -> Text(
+                    target.first, fontSize = 110.sp,
+                    modifier = Modifier
+                        .graphicsLayer(
+                            compositingStrategy = CompositingStrategy.Offscreen,
+                            rotationZ = look.first,
+                            scaleX = look.third * (if (look.second) -1f else 1f),
+                            scaleY = look.third,
+                        )
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(Color(0xFFEDE6FF), blendMode = BlendMode.SrcIn)
+                        },
+                )
+                else -> Text("?", fontSize = 80.sp, color = Color.White.copy(alpha = 0.25f), fontWeight = FontWeight.Bold)
+            }
         }
         options.chunked(2).forEachIndexed { r, pair ->
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 pair.forEachIndexed { c, opt ->
                     val i = r * 2 + c
                     val label = if (revealed) "${opt.first} ${opt.second}" else opt.second
-                    if (revealed && opt == target) Button(onClick = {}, modifier = Modifier.weight(1f)) { Text(label) }
+                    if (revealed && opt == target) Button(onClick = {}, modifier = Modifier.weight(1f)) { Text(label, maxLines = 1) }
                     else OutlinedButton(
-                        onClick = { if (!revealed) { answered = i; if (opt == target) score++ } },
+                        onClick = { if (!revealed && !visible && secondsLeft > 0) { answered = i; if (opt == target) score++ } },
                         modifier = Modifier.weight(1f),
-                    ) { Text(label, color = if (revealed && answered == i) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) }
+                    ) { Text(label, maxLines = 1, color = if (revealed && answered == i) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary) }
                 }
             }
         }
-        if (revealed) Button(onClick = { answered = null; round++ }) { Text(if (round + 1 >= rounds) "Ergebnis" else "Weiter") }
+        if (revealed) Button(onClick = { answered = null; secondsLeft = 0; round++ }) { Text(if (round + 1 >= rounds) "Ergebnis" else "Weiter") }
     }
 }

@@ -75,12 +75,19 @@ private val RECIPES = listOf(
     Recipe("Gemüse-Reis", "🍛", setOf("🍚", "🥕", "🥬")),
     Recipe("Honig-Milch", "🍼", setOf("🥛", "🍯", "🫐")),
     Recipe("Omelett", "🍳", setOf("🥚", "🍄", "🥬")),
+    Recipe("Fischsuppe", "🍜", setOf("🐟", "🥕", "💧", "🥬")),
+    Recipe("Beeren-Pfannkuchen", "🥞", setOf("🥚", "🥛", "🌾", "🫐")),
+    Recipe("Apfelkuchen", "🥧", setOf("🍎", "🌾", "🥚", "🍯")),
+    Recipe("Pilz-Risotto", "🍚", setOf("🍚", "🍄", "🥛", "💧")),
+    Recipe("Gemüsepfanne", "🥘", setOf("🥕", "🍄", "🥬", "🍚")),
+    Recipe("Honig-Müsli", "🥣", setOf("🌾", "🥛", "🍯", "🍎")),
 )
 
 @Composable
 fun CookGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
-    val rounds = 3
-    val recipes = remember { RECIPES.shuffled().take(rounds) }
+    val rounds = 5
+    // erst 2 Rezepte mit 3 Zutaten, dann 3 mit 4 Zutaten
+    val recipes = remember { RECIPES.filter { it.items.size == 3 }.shuffled().take(2) + RECIPES.filter { it.items.size == 4 }.shuffled().take(3) }
     var round by remember { mutableIntStateOf(0) }
     var score by remember { mutableIntStateOf(0) }
     var showRecipe by remember { mutableStateOf(true) }
@@ -90,7 +97,7 @@ fun CookGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
     LaunchedEffect(round) {
         if (round >= rounds) { delay(300); onDone(score, rounds, 0); return@LaunchedEffect }
         pot.clear(); result = null; showRecipe = true
-        delay(3500)
+        delay((3000 - round * 350).coerceAtLeast(1600).toLong())
         showRecipe = false
     }
     if (round >= rounds) return
@@ -137,7 +144,7 @@ fun CookGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
                     row.forEach { ing ->
                         val inPot = ing in pot
                         OutlinedButton(
-                            onClick = { if (inPot) pot.remove(ing) else if (pot.size < 3) pot += ing },
+                            onClick = { if (inPot) pot.remove(ing) else if (pot.size < 5) pot += ing },
                             enabled = !showRecipe,
                             modifier = Modifier.weight(1f),
                         ) { Text(ing + if (inPot) "✓" else "", fontSize = 20.sp) }
@@ -148,7 +155,7 @@ fun CookGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
                 val ok = pot.toSet() == r.items
                 if (ok) score++
                 result = ok
-            }, enabled = pot.size == 3) { Text("🔥 Kochen") }
+            }, enabled = pot.size >= 2) { Text("🔥 Kochen") }
         } else {
             PetIcon(sprite, s.stage, if (result == true) Mood.HAPPY else Mood.OK, 90.dp)
             Button(onClick = { round++ }) { Text(if (round + 1 >= rounds) "Servieren" else "Nächstes Rezept") }
@@ -160,7 +167,7 @@ fun CookGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
 
 @Composable
 fun CloudHopGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
-    val goal = 15
+    val goal = 25
     val phases = remember { List(goal + 2) { Random.nextFloat() * 6.28f } }
     val dirs = remember { List(goal + 2) { if (Random.nextBoolean()) 1f else -1f } }
     var cur by remember { mutableIntStateOf(0) }
@@ -172,7 +179,7 @@ fun CloudHopGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) 
     var over by remember { mutableStateOf(false) }
 
     fun cloudX(i: Int, t: Float): Float =
-        if (i == 0) 0.5f else 0.5f + 0.36f * sin(t * (0.9f + i * 0.09f) * dirs[i] + phases[i])
+        if (i == 0) 0.5f else 0.5f + 0.38f * sin(t * (1.1f + i * 0.08f) * dirs[i] + phases[i])
 
     LaunchedEffect(Unit) {
         var last = withFrameNanos { it }
@@ -183,7 +190,7 @@ fun CloudHopGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) 
                 if (jumpStart >= 0f && time - jumpStart >= 0.45f) {
                     jumpStart = -1f
                     val px = cloudX(cur, time)
-                    if (abs(px - cloudX(cur + 1, time)) < 0.13f) {
+                    if (abs(px - cloudX(cur + 1, time)) < (0.11f - cur * 0.002f).coerceAtLeast(0.07f)) {
                         cur++
                         if (cur >= goal) over = true
                     } else {
@@ -284,7 +291,7 @@ fun VisitGame(vm: PetViewModel, sprite: Sprite?, s: PetState, onDone: (Int, Int,
         return
     }
 
-    val throws = 10
+    val throws = 15
     var thrown by remember { mutableIntStateOf(0) }
     var caught by remember { mutableIntStateOf(0) }
     var t by remember { mutableFloatStateOf(0f) } // 0..1 Flug des Balls
@@ -299,7 +306,7 @@ fun VisitGame(vm: PetViewModel, sprite: Sprite?, s: PetState, onDone: (Int, Int,
         while (thrown < throws) {
             withFrameNanos { now ->
                 val dt = (now - last) / 1e9f; last = now
-                val speed = 0.55f + thrown * 0.05f
+                val speed = 0.7f + thrown * 0.07f
                 t += dt * speed
                 if (t >= 1.08f) {
                     if (!handled) feedback = "Daneben! 🙈"
@@ -327,7 +334,7 @@ fun VisitGame(vm: PetViewModel, sprite: Sprite?, s: PetState, onDone: (Int, Int,
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
                     if (handled || finished) return@clickable
                     handled = true
-                    if (t in 0.82f..1.06f) { caught++; feedback = "Gefangen! 🎉" } else feedback = "Zu früh! 🙈"
+                    if (t in 0.88f..1.04f) { caught++; feedback = "Gefangen! 🎉" } else feedback = "Zu früh! 🙈"
                 },
         ) {
             val wPx = constraints.maxWidth.toFloat()

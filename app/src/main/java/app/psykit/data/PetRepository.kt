@@ -63,6 +63,13 @@ class PetRepository private constructor(context: Context) {
         save(_state.value)
     }
 
+    /** Ein anderes (nicht aktives) Tierchen verändern, z. B. beim Besuch. */
+    fun updatePet(id: String, block: (PetState) -> PetState) = synchronized(lock) {
+        if (id == _currentId.value) { update { s, _ -> block(s) to Unit }; return@synchronized }
+        val s = read(id) ?: return@synchronized
+        save(id, block(PetEngine.advance(s, System.currentTimeMillis(), zone)))
+    }
+
     /** Neues Tierchen (Ei) anlegen und dorthin wechseln. */
     fun addPet(name: String): String = synchronized(lock) {
         val id = "p" + System.currentTimeMillis().toString(36)

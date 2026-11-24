@@ -42,11 +42,14 @@ enum class GameKind(val label: String, val trains: String) {
     BERRIES("Beerenfang", "Abwehr"),
     REACTION("Psi-Reaktion", "Tempo"),
     ECHO("Echo", "Psi"),
-    SHADOW("Schattenraten", "Abwehr");
+    SHADOW("Schattenraten", "Abwehr"),
+    COOK("Futter-Koch", "Angriff"),
+    CLOUDS("Wolkenhüpfen", "Tempo"),
+    VISIT("Besuch", "Vertrauen");
 
     companion object {
         /** Spiele in der Spiel-Auswahl (Beerenfang ist das Bonusspiel). */
-        val daily = listOf(HIDE_SEEK, MEMORY, BUBBLES, REACTION, ECHO, SHADOW)
+        val daily = listOf(HIDE_SEEK, MEMORY, BUBBLES, REACTION, ECHO, SHADOW, COOK, CLOUDS, VISIT)
         fun dailyOn(epochDay: Long): GameKind = daily[Math.floorMod(epochDay, daily.size.toLong()).toInt()]
     }
 }

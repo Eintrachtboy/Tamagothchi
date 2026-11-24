@@ -305,12 +305,19 @@ object PetEngine {
             gamesWon = if (ratio >= 0.5f) s.gamesWon + 1 else s.gamesWon,
         )
         ns = when (game) {
-            GameKind.HIDE_SEEK, GameKind.REACTION -> ns.copy(trainSpd = ns.trainSpd + train)
+            GameKind.HIDE_SEEK, GameKind.REACTION, GameKind.CLOUDS -> ns.copy(trainSpd = ns.trainSpd + train)
+            GameKind.COOK -> ns.copy(trainAtk = ns.trainAtk + train, satiety = ns.satiety + 8f * score)
+            GameKind.VISIT -> ns.copy(trust = ns.trust + 2f + 4f * ratio, happiness = ns.happiness + 5f)
             GameKind.MEMORY, GameKind.ECHO -> ns.copy(trainPsi = ns.trainPsi + train)
             GameKind.BUBBLES -> ns.copy(trainAtk = ns.trainAtk + train)
             GameKind.BERRIES, GameKind.SHADOW -> ns.copy(trainDef = ns.trainDef + train)
         }
-        val trained = if (train > 0) " ${game.trains} +$train." else ""
+        val trained = when {
+            game == GameKind.VISIT -> " Die beiden verstehen sich immer besser."
+            game == GameKind.COOK && score > 0 -> " Mmh, das selbst gekochte Essen schmeckt!" + if (train > 0) " ${game.trains} +$train." else ""
+            train > 0 -> " ${game.trains} +$train."
+            else -> ""
+        }
         val msg = when {
             ratio >= 0.99f -> "Perfekt! $score von $max.$trained"
             ratio >= 0.5f -> "Gut gemacht: $score von $max.$trained"
@@ -318,6 +325,11 @@ object PetEngine {
         }
         return withExp(ns, (3 + 8 * ratio).toInt() + bonusExp, msg, if (ratio >= 0.5f) Reaction.JUMP else Reaction.HAPPY)
     }
+
+    /** Der Besuch tut auch dem anderen Tierchen gut. */
+    fun visited(s: PetState, ratio: Float): PetState = clamp(
+        s.copy(trust = s.trust + 2f + 4f * ratio, happiness = s.happiness + 10f + 10f * ratio, kindCount = s.kindCount + 1),
+    )
 
     // ---------------- Schritte ----------------
 

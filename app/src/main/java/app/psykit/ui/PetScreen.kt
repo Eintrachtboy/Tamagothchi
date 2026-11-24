@@ -393,7 +393,8 @@ fun PetScreen(vm: PetViewModel) {
                                             Text(gameInfo(g) + " Trainiert ${g.trains}.", style = MaterialTheme.typography.bodySmall)
                                         }
                                         Spacer(Modifier.width(8.dp))
-                                        Button(onClick = { if (vm.checkPlay() == null) game = g }) { Text("Spielen") }
+                                        val ok = g != GameKind.VISIT || vm.allPets().count { it.second.stage != Stage.EGG } >= 2
+                                        Button(onClick = { if (vm.checkPlay() == null) game = g }, enabled = ok) { Text("Spielen") }
                                     }
                                 }
                             }
@@ -459,6 +460,9 @@ private fun gameInfo(k: GameKind) = when (k) {
     GameKind.REACTION -> "Tippe so schnell wie möglich, wenn dein Tierchen lila aufleuchtet. Bei rotem Leuchten nicht tippen!"
     GameKind.ECHO -> "Merk dir die Farbfolge und spiel sie nach. Jede Runde wird sie länger."
     GameKind.SHADOW -> "Erkenne am Schatten, was es ist."
+    GameKind.COOK -> "Merk dir das Rezept und koch es nach. Das Essen bekommt dein Tierchen danach zu futtern."
+    GameKind.CLOUDS -> "Hüpf im richtigen Moment von Wolke zu Wolke nach oben."
+    GameKind.VISIT -> "Zwei deiner Tierchen spielen zusammen Ball. Beide bekommen Vertrauen und gute Laune. Braucht mindestens 2 Tierchen."
 }
 
 @Composable

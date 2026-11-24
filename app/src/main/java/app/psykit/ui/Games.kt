@@ -128,6 +128,9 @@ fun GameDialog(
                             GameKind.REACTION -> ReactionGame(sprite, s, done)
                             GameKind.ECHO -> EchoGame(done)
                             GameKind.SHADOW -> ShadowGame(done)
+                            GameKind.COOK -> CookGame(sprite, s, done)
+                            GameKind.CLOUDS -> CloudHopGame(sprite, s, done)
+                            GameKind.VISIT -> VisitGame(vm, sprite, s, done)
                         }
                     }
                 }

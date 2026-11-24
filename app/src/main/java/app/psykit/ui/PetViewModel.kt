@@ -152,6 +152,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     val currentPetId: StateFlow<String> = repo.currentId
 
     fun allPets() = repo.allPets()
+    fun visitedBy(partnerId: String, ratio: Float) = repo.updatePet(partnerId) { PetEngine.visited(it, ratio) }
     fun spritesFor(id: String) = if (id == sprites.petId) sprites else SpriteStore(getApplication(), id)
 
     private fun reloadSprites() {

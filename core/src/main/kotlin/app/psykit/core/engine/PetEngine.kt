@@ -1,6 +1,8 @@
 package app.psykit.core.engine
 
+import app.psykit.core.model.Effect
 import app.psykit.core.model.Food
+import app.psykit.core.model.Item
 import app.psykit.core.model.Plot
 import app.psykit.core.model.PlotStage
 import app.psykit.core.model.Quest
@@ -52,6 +54,15 @@ object PetEngine {
     const val GARDEN_DAYS = 3
     const val HARVEST_BERRIES = 3
     const val MAX_DIRT = 6
+    const val MAX_KEYS = 3
+    const val KEY_STEPS = 3000L
+
+    // Sternenstaub
+    const val GAME_DUST_MIN = 5
+    const val GAME_DUST_MAX = 20
+    const val GAME_DUST_PER_DAY = 100
+    const val QUEST_DUST = 30
+    const val BERRY_PRICE = 3
 
     // Streicheln: Geschwindigkeit in dp pro Sekunde
     const val STROKE_SLOW = 700f
@@ -73,7 +84,11 @@ object PetEngine {
         val grown = Stage.next(st.stage, st.level, (now - st.bornAt) / 86_400_000L)
         if (grown != st.stage) st = st.copy(stage = grown)
         val today = epochDay(now, zone)
-        if (st.questDay != today) st = st.copy(questDay = today, questProgress = emptyMap(), questsClaimed = emptyList())
+        if (st.questDay != today) {
+            // Jeden Tag ein Gratis-Schlüssel für den Dungeon (höchstens 3 auf Vorrat)
+            val key = if (st.questDay >= 0 && st.keys < MAX_KEYS) 1 else 0
+            st = st.copy(questDay = today, questProgress = emptyMap(), questsClaimed = emptyList(), keys = st.keys + key)
+        }
         return st
     }
 
@@ -82,6 +97,9 @@ object PetEngine {
             return if (time - s0.bornAt >= EGG_HATCH_MINUTES * MINUTE) s0.copy(stage = Stage.BABY) else s0
         }
         val h = minutes / 60f
+        // Glücksbringer außerhalb des Kampfs
+        val moodKeep = 1f - Item.sum<Effect.MoodDecay>(s0) { it.pct } / 100f
+        val sleepBoost = 1f + Item.sum<Effect.SleepEnergy>(s0) { it.pct } / 100f
         val phase = DayPhase.at(time, zone)
         val sluggish = s0.sluggishUntil > time
         var s = s0
@@ -89,9 +107,9 @@ object PetEngine {
         if (s.sleeping) {
             s = s.copy(
                 satiety = s.satiety - SATIETY_ASLEEP * h,
-                happiness = s.happiness - HAPPY_ASLEEP * h,
+                happiness = s.happiness - HAPPY_ASLEEP * h * moodKeep,
                 hygiene = s.hygiene - HYGIENE_PER_POOP * s.poops * h,
-                energy = s.energy + ENERGY_SLEEP * h,
+                energy = s.energy + ENERGY_SLEEP * h * sleepBoost,
             )
             if (!phase.isNight && s.energy >= 70f) s = s.copy(sleeping = false)
         } else {
@@ -99,7 +117,7 @@ object PetEngine {
             val energyRate = (if (phase.isNight) ENERGY_AWAKE_NIGHT else ENERGY_AWAKE_DAY) * (if (sluggish) 2f else 1f)
             s = s.copy(
                 satiety = s.satiety - SATIETY_AWAKE * h,
-                happiness = s.happiness - (HAPPY_AWAKE + sadBoost) * h,
+                happiness = s.happiness - (HAPPY_AWAKE + sadBoost) * h * moodKeep,
                 hygiene = s.hygiene - (HYGIENE_BASE + HYGIENE_PER_POOP * s.poops) * h,
                 energy = s.energy - energyRate * h,
                 minutesSincePoop = s.minutesSincePoop + minutes,
@@ -130,6 +148,8 @@ object PetEngine {
         }
         return s
     }
+
+    fun clampState(s: PetState) = clamp(s)
 
     private fun clamp(s: PetState) = s.copy(
         satiety = s.satiety.coerceIn(0f, 100f),
@@ -336,7 +356,21 @@ object PetEngine {
             ratio >= 0.5f -> "Gut gemacht: $score von $max.$trained"
             else -> "$score von $max. Nächstes Mal klappt's besser!"
         }
-        return withExp(ns, (3 + 8 * ratio).toInt() + bonusExp, msg, if (ratio >= 0.5f) Reaction.JUMP else Reaction.HAPPY)
+        // Sternenstaub, höchstens 100 pro Tag aus Spielen
+        val day = s.questDay
+        val already = if (s.stardustDay == day) s.stardustFromGames else 0
+        val raw = ((GAME_DUST_MIN + (GAME_DUST_MAX - GAME_DUST_MIN) * ratio) * (1f + Item.sum<Effect.GameDust>(s) { it.pct } / 100f)).roundToInt()
+        val dust = raw.coerceAtMost(GAME_DUST_PER_DAY - already).coerceAtLeast(0)
+        ns = ns.copy(stardust = ns.stardust + dust, stardustDay = day, stardustFromGames = already + dust)
+        val dustMsg = if (dust > 0) " +$dust ✨" else if (already >= GAME_DUST_PER_DAY) " (Sternenstaub aus Spielen für heute aufgebraucht)" else ""
+        return withExp(ns, (3 + 8 * ratio).toInt() + bonusExp, msg + dustMsg, if (ratio >= 0.5f) Reaction.JUMP else Reaction.HAPPY)
+    }
+
+    /** Gartenbeeren für Sternenstaub verkaufen. */
+    fun sellBerries(s: PetState, n: Int): ActionResult {
+        val k = n.coerceAtMost(s.berryStock)
+        if (k <= 0) return ActionResult(s, "Keine Gartenbeeren zum Verkaufen.", false)
+        return ActionResult(s.copy(berryStock = s.berryStock - k, stardust = s.stardust + k * BERRY_PRICE), "$k Gartenbeeren verkauft: +${k * BERRY_PRICE} ✨")
     }
 
     /** Der Besuch tut auch dem anderen Tierchen gut. */
@@ -384,7 +418,8 @@ object PetEngine {
             PlotStage.RIPE -> ActionResult(s, "Die Beeren sind reif. Ernten!", false)
             else -> if (p.lastWateredDay == today) ActionResult(s, "Dieses Beet hat heute schon Wasser bekommen.", false)
             else {
-                val np = p.copy(lastWateredDay = today, waterDays = p.waterDays + 1)
+                val lucky = kotlin.random.Random(now).nextInt(100) < Item.sum<Effect.GardenGrowth>(s) { it.pct }
+                val np = p.copy(lastWateredDay = today, waterDays = (p.waterDays + if (lucky) 2 else 1).coerceAtMost(GARDEN_DAYS))
                 var ns = kind(withPlot(s, i, np), 0.5f).copy(happiness = s.happiness + 4f, energy = s.energy - 2f)
                 ns = progress(ns, Quest.WATER)
                 val msg = if (np.waterDays >= GARDEN_DAYS) "${s.name} hilft fleißig mit der Gießkanne. Die Beeren sind reif!" else "${s.name} gießt mit dir zusammen. Es wächst! (${np.waterDays}/$GARDEN_DAYS)"
@@ -402,7 +437,7 @@ object PetEngine {
 
     // ---------------- Tagesaufgaben ----------------
 
-    fun quests(s: PetState): List<Quest> = Quest.forDay(s.questDay, s.bornAt)
+    fun quests(s: PetState): List<Quest> = Quest.forDay(s.questDay, s.bornAt, dungeon = s.level >= 5)
 
     fun progress(s: PetState, q: Quest, n: Int = 1): PetState =
         if (q !in quests(s)) s else s.copy(questProgress = s.questProgress + (q.name to ((s.questProgress[q.name] ?: 0) + n)))
@@ -415,9 +450,9 @@ object PetEngine {
     fun claimQuest(s: PetState, q: Quest): ActionResult {
         if (q !in quests(s) || !questDone(s, q)) return ActionResult(s, "Diese Aufgabe ist noch nicht geschafft.", false)
         if (q.name in s.questsClaimed) return ActionResult(s, "Belohnung schon abgeholt.", false)
-        var ns = s.copy(questsClaimed = s.questsClaimed + q.name, happiness = s.happiness + 5f)
+        var ns = s.copy(questsClaimed = s.questsClaimed + q.name, happiness = s.happiness + 5f, stardust = s.stardust + QUEST_DUST)
         var exp = q.rewardExp
-        var msg = "Aufgabe geschafft: ${q.label}! +${q.rewardExp} EP."
+        var msg = "Aufgabe geschafft: ${q.label}! +${q.rewardExp} EP, +$QUEST_DUST ✨."
         if (ns.questsClaimed.size == quests(s).size) {
             exp += 10; ns = ns.copy(berryStock = ns.berryStock + 2)
             msg += " Alle Aufgaben erledigt: +10 EP und 2 Gartenbeeren als Bonus!"
@@ -447,13 +482,23 @@ object PetEngine {
         if (usable == 0L) return ActionResult(s, "Lauf noch ein bisschen! Ab 100 Schritten gibt es EP.", false)
         val exp = (usable / 100).toInt()
         val mood = min(25f, (usable / 500) * 5f)
+        // 10 Sternenstaub pro 1000 Schritte, 1 Schlüssel pro 3000 Schritte (höchstens 3)
+        val dust = (usable / 100).toInt()
+        var keySteps = s.keySteps + usable
+        var keys = s.keys
+        var newKeys = 0
+        while (keySteps >= KEY_STEPS) { keySteps -= KEY_STEPS; if (keys < MAX_KEYS) { keys++; newKeys++ } }
         val ns = s.copy(
             pendingSteps = s.pendingSteps - usable,
             stepsRedeemedTotal = s.stepsRedeemedTotal + usable,
             happiness = s.happiness + mood,
+            stardust = s.stardust + dust,
+            keySteps = keySteps,
+            keys = keys,
         )
         val dirty = if (s.dirt > 0) " Vom Spaziergang ist ${s.name} etwas schmutzig geworden." else ""
-        return withExp(ns, exp, "$usable Schritte eingelöst: +$exp EP.$dirty")
+        val keyMsg = if (newKeys > 0) " +$newKeys 🗝️ Schlüssel." else ""
+        return withExp(ns, exp, "$usable Schritte eingelöst: +$exp EP, +$dust ✨.$keyMsg$dirty")
     }
 
     // ---------------- Begrüßung ----------------

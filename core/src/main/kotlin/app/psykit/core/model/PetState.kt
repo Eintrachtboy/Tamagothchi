@@ -62,6 +62,29 @@ data class PetState(
     val questDay: Long = -1,
     val questProgress: Map<String, Int> = emptyMap(),
     val questsClaimed: List<String> = emptyList(),
+    // Sternenstaub, Schlüssel und Tränke
+    val stardust: Long = 0,
+    val stardustDay: Long = -1,
+    val stardustFromGames: Int = 0,
+    val keys: Int = 1,
+    val keySteps: Long = 0,
+    val healPotions: Int = 0,
+    val psiPotions: Int = 0,
+    // Attacken: gekauft/gefunden und die 4 ausgerüsteten (leer = Standard)
+    val ownedMoves: List<String> = emptyList(),
+    val equippedMoves: List<String> = emptyList(),
+    // Kosmetik: Besitz, angelegte Teile, Glücksbringer und aufgestellte Deko
+    val items: List<String> = emptyList(),
+    val headItem: String? = null,
+    val eyesItem: String? = null,
+    val charmItem: String? = null,
+    val placedDeco: List<String> = emptyList(),
+    // Dungeon: geschaffte Ebenen der Reihe nach, besiegte Bosse, Rekord in der Tiefe, laufender Lauf
+    val dungeonProgress: Int = 0,
+    val bossesBeaten: List<Int> = emptyList(),
+    val depthRecord: Int = 0,
+    val run: app.psykit.core.dungeon.DungeonRun? = null,
+    val lastRun: app.psykit.core.dungeon.RunReport? = null,
 ) {
     val sluggish: Boolean get() = sluggishUntil > lastUpdate
 

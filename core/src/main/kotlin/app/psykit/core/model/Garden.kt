@@ -29,13 +29,24 @@ enum class Quest(val label: String, val target: Int, val rewardExp: Int) {
     CLEAN("Einmal putzen", 1, 5),
     WATER("Den Garten gießen", 1, 5),
     SCRATCH("Die Lieblingsstelle finden", 1, 8),
-    HARVEST("Beeren ernten", 1, 6);
+    HARVEST("Beeren ernten", 1, 6),
+    DEFEAT("5 Gegner im Dungeon besiegen", 5, 10),
+    CHEST("2 Truhen im Dungeon öffnen", 2, 8),
+    SUBLEVEL("Eine Dungeon-Ebene schaffen", 1, 12);
+
+    val dungeon get() = this == DEFEAT || this == CHEST || this == SUBLEVEL
 
     companion object {
-        fun forDay(epochDay: Long, seed: Long): List<Quest> {
+        fun forDay(epochDay: Long, seed: Long, dungeon: Boolean = false): List<Quest> {
             val r = Random(seed xor (epochDay * 7_368_787L))
-            // Schritte sind fast immer dabei, der Rest zufällig
-            val rest = (entries - STEPS).shuffled(r)
+            // Schritte sind fast immer dabei, der Rest zufällig. Dungeon-Aufgaben erst, wenn der Dungeon offen ist.
+            val rest = (entries - STEPS).filter { !it.dungeon }.shuffled(r).let { base ->
+                if (!dungeon) base else {
+                    val d = entries.filter { it.dungeon }.shuffled(r)
+                    // Mit etwa jeder zweiten Liste kommt eine Dungeon-Aufgabe dazu
+                    if (r.nextBoolean()) listOf(d.first()) + base else base
+                }
+            }
             return if (r.nextInt(4) != 0) listOf(STEPS) + rest.take(2) else rest.take(3)
         }
     }

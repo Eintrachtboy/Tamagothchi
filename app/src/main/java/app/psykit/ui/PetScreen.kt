@@ -92,7 +92,7 @@ import kotlin.math.roundToInt
 enum class Mode(val icon: String, val label: String) {
     FEED("🍙", "Füttern"), STROKE("🤚", "Streicheln"), CLEAN("🧽", "Putzen"),
     SLEEP("🌙", "Schlafen"), PLAY("🎲", "Spielen"), BONUS("🫐", "Bonus"),
-    GARDEN("🌱", "Garten"), QUESTS("📋", "Aufgaben"),
+    GARDEN("🌱", "Garten"), QUESTS("📋", "Aufgaben"), DUNGEON("⚔️", "Dungeon"), SHOP("🛍️", "Laden"),
 }
 
 @Composable
@@ -104,6 +104,7 @@ fun PetScreen(vm: PetViewModel) {
     val watering by vm.watering.collectAsState()
     val floating by vm.floating.collectAsState()
     val spriteVersion by vm.spriteVersion.collectAsState()
+    val headPoint by vm.headPoint.collectAsState()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -112,6 +113,9 @@ fun PetScreen(vm: PetViewModel) {
     var showStats by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showPets by remember { mutableStateOf(false) }
+    var showDungeon by remember { mutableStateOf(false) }
+    var showShop by remember { mutableStateOf(false) }
+    var showBook by remember { mutableStateOf(false) }
     var stepPermission by remember { mutableStateOf(vm.stepSensor.hasPermission()) }
     var askedOnce by rememberSaveable { mutableStateOf(false) }
 
@@ -303,6 +307,7 @@ fun PetScreen(vm: PetViewModel) {
                 interaction = if (isEgg) Modifier else sceneInteraction,
                 dim = if (mode == Mode.SLEEP) 1f - light else 0f,
                 floating = floating,
+                wear = Wearables.of(s, headPoint),
                 overlay = {
                     when (mode) {
                         Mode.STROKE -> handPos?.let { p ->
@@ -406,6 +411,8 @@ fun PetScreen(vm: PetViewModel) {
                             }
                             Mode.GARDEN -> GardenPanel(s, vm)
                             Mode.QUESTS -> QuestPanel(s, vm)
+                            Mode.DUNGEON -> DungeonPanel(s, onOpen = { showDungeon = true })
+                            Mode.SHOP -> ShopPanel(s, onShop = { showShop = true }, onBook = { showBook = true })
                             Mode.BONUS -> {
                                 Text("Beerenfang", fontWeight = FontWeight.Bold)
                                 Text(gameInfo(GameKind.BERRIES) + " Trainiert ${GameKind.BERRIES.trains}.", style = MaterialTheme.typography.bodyMedium)
@@ -447,6 +454,9 @@ fun PetScreen(vm: PetViewModel) {
     if (showStats) StatsDialog(s, onDismiss = { showStats = false })
     if (showSettings) SettingsDialog(vm, s, onDismiss = { showSettings = false })
     if (showPets) PetsDialog(vm, onDismiss = { showPets = false })
+    if (showDungeon) DungeonDialog(vm, s, sprite, onClose = { showDungeon = false })
+    if (showShop) ShopDialog(vm, s, onClose = { showShop = false })
+    if (showBook) CollectionDialog(vm, s, sprite, onClose = { showBook = false })
 }
 
 private fun gameInfo(k: GameKind) = when (k) {
@@ -534,7 +544,7 @@ private fun androidx.compose.foundation.layout.BoxScope.Blanket(progress: Float)
 @Composable
 private fun ModeBar(mode: Mode, onSelect: (Mode) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Mode.entries.chunked(4).forEach { row ->
+        Mode.entries.chunked(5).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { m ->
                     val sel = m == mode

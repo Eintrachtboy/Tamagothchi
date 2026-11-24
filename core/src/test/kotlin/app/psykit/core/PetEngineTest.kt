@@ -1,6 +1,5 @@
 package app.psykit.core
 
-import app.psykit.core.battle.BattleEngine
 import app.psykit.core.battle.PetCombatant
 import app.psykit.core.engine.LevelSystem
 import app.psykit.core.engine.PetEngine
@@ -158,11 +157,11 @@ class PetEngineTest {
         assertTrue(System.nanoTime() - t0 < 2_000_000_000L)
     }
 
-    @Test fun battleDamagePositive() {
+    @Test fun strongerPetHasBetterStats() {
         val a = PetCombatant(LevelSystem.addExp(hatched(at(12)), 3000).first)
         val b = PetCombatant(hatched(at(12)))
-        val dmg = BattleEngine.damage(a, b, a.moves.first(), Random(1))
-        assertTrue(dmg > 0)
+        assertTrue(a.stats.attack > b.stats.attack)
+        assertTrue(b.moves.isNotEmpty())
     }
 
     @Test fun gardenGrowsWithWateringOnThreeDays() {

@@ -4,7 +4,14 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import app.psykit.core.battle.MoveId
+import app.psykit.core.battle.PetAction
+import app.psykit.core.battle.Potion
+import app.psykit.core.dungeon.DungeonEngine
+import app.psykit.core.dungeon.Shop
 import app.psykit.core.engine.ActionResult
+import app.psykit.core.model.Item
+import app.psykit.core.model.Slot
 import app.psykit.core.engine.PetEngine
 import app.psykit.core.model.Food
 import app.psykit.core.model.GameKind
@@ -115,6 +122,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
             else {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { packs.activate(info.id) }
                 _floating.value = packs.floating
+                _headPoint.value = HeadPoint.decode(packs.headPoint) ?: HeadPoint()
                 if (info.petName.isNotBlank()) rename(info.petName)
                 _spriteVersion.value++
                 "Paket „${info.name}“ mit ${info.images} Bildern importiert und aktiviert." +
@@ -128,6 +136,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     fun activatePack(id: String) {
         val info = packs.activate(id)
         _floating.value = packs.floating
+        _headPoint.value = HeadPoint.decode(packs.headPoint) ?: HeadPoint()
         if (info != null) {
             if (info.petName.isNotBlank()) rename(info.petName)
             _message.value = "Jetzt mit Figur „${info.name}“."
@@ -135,7 +144,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         _spriteVersion.value++
     }
 
-    fun useBuiltIn() { packs.useBuiltIn(); _floating.value = packs.floating; _spriteVersion.value++; _message.value = "Jetzt mit der eingebauten Figur." }
+    fun useBuiltIn() { packs.useBuiltIn(); packs.headPoint = null; _headPoint.value = HeadPoint(); _floating.value = packs.floating; _spriteVersion.value++; _message.value = "Jetzt mit der eingebauten Figur." }
     fun deletePack(id: String) { packs.delete(id); _spriteVersion.value++ }
     fun saveCurrentPack(name: String) { packs.saveCurrent(name.ifBlank { "Meine Bilder" }); _spriteVersion.value++ }
 
@@ -166,6 +175,33 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     fun say(msg: String) { _message.value = msg }
 
+    // ---------- Dungeon, Kampf und Laden ----------
+    fun enterDungeon(floor: Int) = act { s, now -> DungeonEngine.enter(s, floor, now) }
+    fun chooseRoom(i: Int) = act { s, _ -> DungeonEngine.chooseRoom(s, i) }
+    fun battle(action: PetAction) = act { s, _ -> DungeonEngine.battle(s, action) }
+    fun resolveEvent(accept: Boolean) = act { s, _ -> DungeonEngine.resolveEvent(s, accept) }
+    fun rest(heal: Boolean) = act { s, _ -> DungeonEngine.rest(s, heal) }
+    fun merchantBuy(p: Potion) = act { s, _ -> DungeonEngine.buyFromMerchant(s, p) }
+    fun leaveRoom() = act { s, _ -> DungeonEngine.leaveRoom(s) }
+    fun crossBridge(fast: Boolean) = act { s, _ -> DungeonEngine.crossBridge(s, fast) }
+    fun leaveDungeon() = act { s, _ -> DungeonEngine.leave(s) }
+    fun clearLastRun() = repo.update { s, _ -> s.copy(lastRun = null) to Unit }
+
+    fun buyMove(m: MoveId) = act { s, _ -> Shop.buyMove(s, m) }
+    fun buyItem(i: Item) = act { s, _ -> Shop.buyItem(s, i) }
+    fun buyPotion(p: Potion) = act { s, _ -> Shop.buyPotion(s, p) }
+    fun buyKey() = act { s, _ -> Shop.buyKey(s) }
+    fun sellBerries(n: Int) = act { s, _ -> PetEngine.sellBerries(s, n) }
+    fun wear(slot: Slot, item: Item?) = repo.update { s, _ -> Shop.wear(s, slot, item) to Unit }
+    fun setCharm(item: Item?) = repo.update { s, _ -> Shop.setCharm(s, item) to Unit }
+    fun toggleDeco(item: Item) = act { s, _ -> Shop.toggleDeco(s, item) }
+    fun setMoves(moves: List<MoveId>) = repo.update { s, _ -> Shop.setMoves(s, moves) to Unit }
+
+    /** Sitz von Hut und Brille auf eigenen Bildern. */
+    private val _headPoint = MutableStateFlow(HeadPoint.decode(packs.headPoint) ?: HeadPoint())
+    val headPoint: StateFlow<HeadPoint> = _headPoint
+    fun setHeadPoint(h: HeadPoint) { packs.headPoint = h.encode(); _headPoint.value = h }
+
     // ---------- Mehrere Tierchen ----------
     val currentPetId: StateFlow<String> = repo.currentId
 
@@ -181,6 +217,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         sprites = SpriteStore(getApplication(), repo.currentId.value)
         packs = CharacterPacks(getApplication(), sprites)
         _floating.value = packs.floating
+        _headPoint.value = HeadPoint.decode(packs.headPoint) ?: HeadPoint()
         _spriteVersion.value++
     }
 

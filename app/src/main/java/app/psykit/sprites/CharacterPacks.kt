@@ -7,22 +7,36 @@ import java.io.File
 import java.util.zip.ZipInputStream
 
 /** Beschreibung eines Figuren-Pakets (pack.json im ZIP, alles optional). */
-data class PackManifest(val name: String = "", val petName: String = "", val author: String = "", val floating: Boolean? = null) {
+data class PackManifest(
+    val name: String = "",
+    val petName: String = "",
+    val author: String = "",
+    val floating: Boolean? = null,
+    /** Kopfpunkt für Hut und Brille: "x,y,size,eyes" als Anteile des Bildes. */
+    val head: String? = null,
+) {
     fun toJson(): String = JSONObject().put("name", name).put("petName", petName).put("author", author)
-        .apply { if (floating != null) put("float", floating) }.toString(2)
+        .apply { if (floating != null) put("float", floating) }
+        .apply {
+            val h = head?.split(',')?.mapNotNull { it.toFloatOrNull() }
+            if (h != null && h.size == 4) put("head", JSONObject().put("x", h[0].toDouble()).put("y", h[1].toDouble()).put("size", h[2].toDouble()).put("eyes", h[3].toDouble()))
+        }
+        .toString(2)
 
     companion object {
         fun parse(text: String): PackManifest? = runCatching {
             val o = JSONObject(text.trim().removePrefix("\uFEFF"))
+            val h = o.optJSONObject("head")
             PackManifest(
                 o.optString("name", ""), o.optString("petName", ""), o.optString("author", ""),
                 if (o.has("float")) o.optBoolean("float", true) else null,
+                h?.let { "${it.optDouble("x", 0.5)},${it.optDouble("y", 0.1)},${it.optDouble("size", 0.42)},${it.optDouble("eyes", 0.3)}" },
             )
         }.getOrNull()
     }
 }
 
-data class PackInfo(val id: String, val name: String, val petName: String, val images: Int, val floating: Boolean? = null)
+data class PackInfo(val id: String, val name: String, val petName: String, val images: Int, val floating: Boolean? = null, val head: String? = null)
 
 /**
  * Figuren-Pakete: ZIP-Dateien mit Bildern je Stufe und Laune.
@@ -43,12 +57,17 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
         get() = prefs.getBoolean("float_${store.petId}", true)
         set(v) { prefs.edit().putBoolean("float_${store.petId}", v).apply() }
 
+    /** Sitz von Hut und Brille auf eigenen Bildern ("x,y,size,eyes"), null = Standard. Pro Tierchen. */
+    var headPoint: String?
+        get() = prefs.getString("head_${store.petId}", null)
+        set(v) { prefs.edit().putString("head_${store.petId}", v).apply() }
+
     fun list(): List<PackInfo> = root.listFiles()?.filter { it.isDirectory }?.mapNotNull { info(it) }?.sortedBy { it.name.lowercase() } ?: emptyList()
 
     private fun info(dir: File): PackInfo? {
         val m = runCatching { PackManifest.parse(File(dir, "pack.json").readText()) }.getOrNull() ?: return null
         val images = dir.listFiles()?.count { it.extension == "png" || it.extension == "anim" } ?: 0
-        return PackInfo(dir.name, m.name.ifBlank { dir.name }, m.petName, images, m.floating)
+        return PackInfo(dir.name, m.name.ifBlank { dir.name }, m.petName, images, m.floating, m.head)
     }
 
     /** Liest ein ZIP ein. Gibt das neue Paket und die nicht zugeordneten Dateinamen zurück. */
@@ -114,7 +133,7 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
         if (files.isEmpty()) return null
         val dest = File(root, idFor(name)).apply { deleteRecursively(); mkdirs() }
         files.forEach { it.copyTo(File(dest, it.name), overwrite = true) }
-        File(dest, "pack.json").writeText(PackManifest(name = name).toJson())
+        File(dest, "pack.json").writeText(PackManifest(name = name, head = headPoint).toJson())
         activeId = dest.name
         return info(dest)
     }
@@ -130,6 +149,7 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
         store.clearCache()
         activeId = id
         info.floating?.let { floating = it }
+        headPoint = info.head
         return info
     }
 

@@ -3,6 +3,7 @@ name: APK bauen
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -35,6 +36,7 @@ jobs:
           path: Psykit-v*.apk
 
       - name: Release veröffentlichen
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

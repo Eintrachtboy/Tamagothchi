@@ -94,6 +94,14 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
     }
 
     var importInfo by remember { mutableStateOf<String?>(null) }
+    var packInfo by remember { mutableStateOf<String?>(null) }
+    var showHelp by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf<String?>(null) }
+    val packs = remember(spriteVersion) { vm.packs.list() }
+    val activePack = remember(spriteVersion) { vm.packs.activeId }
+    val zipPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) { packInfo = "Importiere …"; vm.importZip(uri) { packInfo = it } }
+    }
     val packPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) {
             vm.importPack(uris)
@@ -108,6 +116,32 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it.take(16) }, label = { Text("Name") }, singleLine = true)
                 Button(onClick = { vm.rename(name) }) { Text("Namen speichern") }
+                HorizontalDivider()
+                Text("Figuren-Pakete", fontWeight = FontWeight.Bold)
+                Text(
+                    "Ein Paket ist eine ZIP-Datei mit allen Bildern einer Figur. Importiere mehrere und wechsle, wann du willst. Level und Werte bleiben erhalten.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { zipPicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream")) }) { Text("Paket importieren (ZIP)") }
+                    OutlinedButton(onClick = { showHelp = true }) { Text("❓ Anleitung") }
+                }
+                packInfo?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text((if (activePack == "") "● " else "○ ") + "Eingebaute Figur", Modifier.weight(1f))
+                    if (activePack != "") TextButton(onClick = { vm.useBuiltIn() }) { Text("Benutzen") }
+                }
+                packs.forEach { p ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text((if (p.id == activePack) "● " else "○ ") + p.name, fontWeight = if (p.id == activePack) FontWeight.Bold else FontWeight.Normal)
+                            Text("${p.images} Bilder" + if (p.petName.isNotBlank()) " · Name: ${p.petName}" else "", style = MaterialTheme.typography.labelSmall)
+                        }
+                        if (p.id != activePack) TextButton(onClick = { vm.activatePack(p.id) }) { Text("Benutzen") }
+                        if (confirmDelete == p.id) TextButton(onClick = { vm.deletePack(p.id); confirmDelete = null }) { Text("Sicher?", color = MaterialTheme.colorScheme.error) }
+                        else TextButton(onClick = { confirmDelete = p.id }) { Text("Löschen") }
+                    }
+                }
                 HorizontalDivider()
                 Text("Eigene Bilder", fontWeight = FontWeight.Bold)
                 Text(
@@ -153,4 +187,5 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Fertig") } },
     )
+    if (showHelp) HelpDialog(onDismiss = { showHelp = false })
 }

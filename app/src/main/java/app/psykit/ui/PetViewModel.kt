@@ -13,6 +13,7 @@ import app.psykit.core.model.Reaction
 import app.psykit.core.model.Zone
 import app.psykit.core.model.Stage
 import app.psykit.data.PetRepository
+import app.psykit.sprites.CharacterPacks
 import app.psykit.sprites.SpriteNames
 import app.psykit.sprites.SpriteStore
 import app.psykit.sprites.SpriteVariant
@@ -26,6 +27,7 @@ import kotlinx.coroutines.launch
 class PetViewModel(app: Application) : AndroidViewModel(app) {
     val repo = PetRepository.get(app)
     val sprites = SpriteStore(app)
+    val packs = CharacterPacks(app, sprites)
     val stepSensor = StepSensor(app)
 
     val state: StateFlow<PetState> = repo.state
@@ -86,13 +88,46 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     fun rename(name: String) = repo.update { s, _ -> PetEngine.rename(s, name) to Unit }
     fun reset(name: String) { repo.reset(name); _message.value = "Ein neues Ei! Es schlüpft in ein paar Minuten." }
 
+    /** Figuren-Paket (ZIP) importieren und direkt benutzen. */
+    fun importZip(uri: Uri, onDone: (String) -> Unit) {
+        viewModelScope.launch {
+            val fallback = (sprites.displayName(uri) ?: "Paket").substringBeforeLast('.')
+            val (info, unknown) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { packs.import(uri, fallback) }
+            val msg = if (info == null) "Import fehlgeschlagen: keine passenden Bilder gefunden." + (if (unknown.isNotEmpty()) " (${unknown.take(5).joinToString()})" else "")
+            else {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { packs.activate(info.id) }
+                if (info.petName.isNotBlank()) rename(info.petName)
+                _spriteVersion.value++
+                "Paket „${info.name}“ mit ${info.images} Bildern importiert und aktiviert." +
+                    (if (unknown.isNotEmpty()) " Nicht zugeordnet: ${unknown.take(6).joinToString()}." else "")
+            }
+            _message.value = msg
+            onDone(msg)
+        }
+    }
+
+    fun activatePack(id: String) {
+        val info = packs.activate(id)
+        if (info != null) {
+            if (info.petName.isNotBlank()) rename(info.petName)
+            _message.value = "Jetzt mit Figur „${info.name}“."
+        }
+        _spriteVersion.value++
+    }
+
+    fun useBuiltIn() { packs.useBuiltIn(); _spriteVersion.value++; _message.value = "Jetzt mit der eingebauten Figur." }
+    fun deletePack(id: String) { packs.delete(id); _spriteVersion.value++ }
+    fun saveCurrentPack(name: String) { packs.saveCurrent(name.ifBlank { "Meine Bilder" }); _spriteVersion.value++ }
+
     fun setSprite(stage: Stage, variant: SpriteVariant, uri: Uri) {
+        packs.markModified()
         _message.value = if (sprites.save(stage, variant, uri)) "Neues Bild für „${stage.displayName} · ${variant.label}“ gesetzt."
         else "Das Bild konnte nicht geladen werden."
         _spriteVersion.value++
     }
     /** Mehrere Bilder auf einmal importieren und anhand der Dateinamen zuordnen. */
     fun importPack(uris: List<Uri>) {
+        packs.markModified()
         var ok = 0
         val unknown = mutableListOf<String>()
         uris.forEach { uri ->
@@ -107,7 +142,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun clearSprite(stage: Stage, variant: SpriteVariant) { sprites.clear(stage, variant); _spriteVersion.value++ }
+    fun clearSprite(stage: Stage, variant: SpriteVariant) { packs.markModified(); sprites.clear(stage, variant); _spriteVersion.value++ }
 
     fun say(msg: String) { _message.value = msg }
 

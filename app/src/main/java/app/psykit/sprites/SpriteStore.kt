@@ -49,10 +49,13 @@ data class Sprite(val image: ImageBitmap?, val animated: File?, val exact: Boole
  */
 class SpriteStore(context: Context) {
     private val ctx = context.applicationContext
-    private val dir = File(ctx.filesDir, "sprites").apply { mkdirs() }
+    internal val dir = File(ctx.filesDir, "sprites").apply { mkdirs() }
     private val cache = mutableMapOf<String, ImageBitmap?>()
 
-    private fun key(stage: Stage, v: SpriteVariant) = stage.name.lowercase() + v.suffix
+    /** Nach dem Wechsel eines Figuren-Pakets alles neu laden. */
+    fun clearCache() = cache.clear()
+
+    private fun key(stage: Stage, v: SpriteVariant) = keyOf(stage, v)
     private fun file(stage: Stage, v: SpriteVariant) = File(dir, key(stage, v) + ".png")
     private fun animFile(stage: Stage, v: SpriteVariant) = File(dir, key(stage, v) + ".anim")
 
@@ -117,6 +120,35 @@ class SpriteStore(context: Context) {
             if (c.moveToFirst()) c.getString(0) else null
         }
     }.getOrNull()
+
+    companion object {
+        fun keyOf(stage: Stage, v: SpriteVariant) = stage.name.lowercase() + v.suffix
+
+        /**
+         * Speichert Bilddaten unter [key] in [dir]: animierte GIF/WebP unverändert als .anim,
+         * alles andere als PNG (max. 768 px).
+         */
+        fun writeImage(dir: File, key: String, bytes: ByteArray): Boolean = runCatching {
+            if (bytes.size > 20 * 1024 * 1024) return false
+            val drawable = runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) }.getOrNull()
+            if (drawable is android.graphics.drawable.AnimatedImageDrawable) {
+                File(dir, "$key.anim").writeBytes(bytes)
+                File(dir, "$key.png").delete()
+                return true
+            }
+            val src = ImageDecoder.decodeBitmap(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) { d, info, _ ->
+                d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                val max = maxOf(info.size.width, info.size.height)
+                if (max > 768) {
+                    val scale = 768f / max
+                    d.setTargetSize((info.size.width * scale).toInt(), (info.size.height * scale).toInt())
+                }
+            }
+            File(dir, "$key.png").outputStream().use { src.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            File(dir, "$key.anim").delete()
+            true
+        }.getOrDefault(false)
+    }
 
     fun clear(stage: Stage, v: SpriteVariant) {
         file(stage, v).delete()

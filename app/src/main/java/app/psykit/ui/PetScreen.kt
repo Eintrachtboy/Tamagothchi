@@ -384,11 +384,17 @@ fun PetScreen(vm: PetViewModel) {
                                 }
                             }
                             Mode.PLAY -> {
-                                val today = vm.todaysGame()
-                                Text("Heutiges Spiel: ${today.label}", fontWeight = FontWeight.Bold)
-                                Text(gameInfo(today) + " Trainiert ${today.trains}.", style = MaterialTheme.typography.bodyMedium)
-                                Text("Morgen gibt es ein anderes Spiel.", style = MaterialTheme.typography.bodySmall)
-                                Button(onClick = { if (vm.checkPlay() == null) game = today }) { Text("Los geht's") }
+                                Text("Such dir ein Spiel aus:", fontWeight = FontWeight.Bold)
+                                GameKind.daily.forEach { g ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Column(Modifier.weight(1f)) {
+                                            Text(g.label, fontWeight = FontWeight.Bold)
+                                            Text(gameInfo(g) + " Trainiert ${g.trains}.", style = MaterialTheme.typography.bodySmall)
+                                        }
+                                        Spacer(Modifier.width(8.dp))
+                                        Button(onClick = { if (vm.checkPlay() == null) game = g }) { Text("Spielen") }
+                                    }
+                                }
                             }
                             Mode.BONUS -> {
                                 Text("Beerenfang", fontWeight = FontWeight.Bold)

@@ -129,26 +129,54 @@ class SpriteStore(context: Context, val petId: String = "p1") {
          * Speichert Bilddaten unter [key] in [dir]: animierte GIF/WebP unverändert als .anim,
          * alles andere als PNG (max. 768 px).
          */
-        fun writeImage(dir: File, key: String, bytes: ByteArray): Boolean = runCatching {
-            if (bytes.size > 20 * 1024 * 1024) return false
-            val drawable = runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) }.getOrNull()
-            if (drawable is android.graphics.drawable.AnimatedImageDrawable) {
-                File(dir, "$key.anim").writeBytes(bytes)
-                File(dir, "$key.png").delete()
-                return true
-            }
-            val src = ImageDecoder.decodeBitmap(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) { d, info, _ ->
-                d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
-                val max = maxOf(info.size.width, info.size.height)
-                if (max > 768) {
-                    val scale = 768f / max
-                    d.setTargetSize((info.size.width * scale).toInt(), (info.size.height * scale).toInt())
+        fun writeImage(dir: File, key: String, bytes: ByteArray): Boolean {
+            if (bytes.size > 40 * 1024 * 1024) return false
+            if (isAnimated(bytes)) {
+                val ok = runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) is android.graphics.drawable.AnimatedImageDrawable }.getOrDefault(false)
+                if (ok) {
+                    File(dir, "$key.anim").writeBytes(bytes)
+                    File(dir, "$key.png").delete()
+                    return true
                 }
             }
-            File(dir, "$key.png").outputStream().use { src.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            File(dir, "$key.anim").delete()
-            true
-        }.getOrDefault(false)
+            val bmp = decodeScaled(bytes) ?: return false
+            return runCatching {
+                File(dir, "$key.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                File(dir, "$key.anim").delete()
+                true
+            }.getOrDefault(false)
+        }
+
+        /** Animiert? WebP mit ANIM-Block oder GIF. */
+        private fun isAnimated(b: ByteArray): Boolean {
+            if (b.size > 6 && b[0] == 'G'.code.toByte() && b[1] == 'I'.code.toByte() && b[2] == 'F'.code.toByte()) return true
+            if (b.size > 16 && String(b, 0, 4, Charsets.US_ASCII) == "RIFF" && String(b, 8, 4, Charsets.US_ASCII) == "WEBP") {
+                val head = String(b, 0, minOf(b.size, 4096), Charsets.ISO_8859_1)
+                return head.contains("ANIM")
+            }
+            return false
+        }
+
+        /** Auf max. 768 px verkleinert dekodieren; mit Ersatzweg für große oder ungewöhnliche Dateien. */
+        private fun decodeScaled(bytes: ByteArray): Bitmap? {
+            runCatching {
+                return ImageDecoder.decodeBitmap(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) { d, info, _ ->
+                    d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+                    val max = maxOf(info.size.width, info.size.height)
+                    if (max > 768) {
+                        val scale = 768f / max
+                        d.setTargetSize((info.size.width * scale).toInt().coerceAtLeast(1), (info.size.height * scale).toInt().coerceAtLeast(1))
+                    }
+                }
+            }
+            return runCatching {
+                val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, o)
+                var sample = 1
+                while (maxOf(o.outWidth, o.outHeight) / sample > 1536) sample *= 2
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+            }.getOrNull()
+        }
     }
 
     fun clear(stage: Stage, v: SpriteVariant) {

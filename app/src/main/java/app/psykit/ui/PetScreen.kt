@@ -102,6 +102,7 @@ fun PetScreen(vm: PetViewModel) {
     val stepsToday by vm.stepsToday.collectAsState()
     val reaction by vm.reaction.collectAsState()
     val watering by vm.watering.collectAsState()
+    val floating by vm.floating.collectAsState()
     val spriteVersion by vm.spriteVersion.collectAsState()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -301,6 +302,7 @@ fun PetScreen(vm: PetViewModel) {
                 },
                 interaction = if (isEgg) Modifier else sceneInteraction,
                 dim = if (mode == Mode.SLEEP) 1f - light else 0f,
+                floating = floating,
                 overlay = {
                     when (mode) {
                         Mode.STROKE -> handPos?.let { p ->

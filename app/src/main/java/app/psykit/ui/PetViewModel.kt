@@ -114,6 +114,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
             val msg = if (info == null) "Import fehlgeschlagen: keine passenden Bilder gefunden." + (if (unknown.isNotEmpty()) " (${unknown.take(5).joinToString()})" else "")
             else {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { packs.activate(info.id) }
+                _floating.value = packs.floating
                 if (info.petName.isNotBlank()) rename(info.petName)
                 _spriteVersion.value++
                 "Paket „${info.name}“ mit ${info.images} Bildern importiert und aktiviert." +
@@ -126,6 +127,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     fun activatePack(id: String) {
         val info = packs.activate(id)
+        _floating.value = packs.floating
         if (info != null) {
             if (info.petName.isNotBlank()) rename(info.petName)
             _message.value = "Jetzt mit Figur „${info.name}“."
@@ -133,7 +135,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         _spriteVersion.value++
     }
 
-    fun useBuiltIn() { packs.useBuiltIn(); _spriteVersion.value++; _message.value = "Jetzt mit der eingebauten Figur." }
+    fun useBuiltIn() { packs.useBuiltIn(); _floating.value = packs.floating; _spriteVersion.value++; _message.value = "Jetzt mit der eingebauten Figur." }
     fun deletePack(id: String) { packs.delete(id); _spriteVersion.value++ }
     fun saveCurrentPack(name: String) { packs.saveCurrent(name.ifBlank { "Meine Bilder" }); _spriteVersion.value++ }
 
@@ -171,9 +173,14 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     fun visitedBy(partnerId: String, ratio: Float) = repo.updatePet(partnerId) { PetEngine.visited(it, ratio) }
     fun spritesFor(id: String) = if (id == sprites.petId) sprites else SpriteStore(getApplication(), id)
 
+    private val _floating = MutableStateFlow(packs.floating)
+    val floating: StateFlow<Boolean> = _floating
+    fun setFloating(on: Boolean) { packs.floating = on; _floating.value = on }
+
     private fun reloadSprites() {
         sprites = SpriteStore(getApplication(), repo.currentId.value)
         packs = CharacterPacks(getApplication(), sprites)
+        _floating.value = packs.floating
         _spriteVersion.value++
     }
 

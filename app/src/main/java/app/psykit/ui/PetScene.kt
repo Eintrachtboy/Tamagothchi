@@ -73,6 +73,7 @@ fun PetScene(
     modifier: Modifier = Modifier,
     interaction: Modifier = Modifier,
     dim: Float = 0f,
+    floating: Boolean = true,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val anim = rememberInfiniteTransition(label = "idle")
@@ -150,7 +151,7 @@ fun PetScene(
             drawOval(groundColor, topLeft = Offset(-w * 0.2f, h * 0.8f), size = androidx.compose.ui.geometry.Size(w * 1.4f, h * 0.5f))
             if (custom != null) {
                 // Schatten unter eigenen Bildern, wird kleiner, wenn die Figur hochschwebt
-                val sw = w * 0.3f * (1f - 0.15f * bob)
+                val sw = w * 0.3f * (if (floating) 1f - 0.15f * bob else 1f)
                 drawOval(Color(0x26000000), topLeft = Offset(w / 2 - sw / 2, h * 0.935f), size = androidx.compose.ui.geometry.Size(sw, h * 0.045f))
             }
             for (i in 0 until poops) drawPoop(Offset(w * (0.14f + i * 0.11f), h * 0.93f), h * 0.07f)
@@ -160,23 +161,24 @@ fun PetScene(
         if (custom != null) {
             // Bewegung je nach Laune: fröhlich hüpft höher, traurig/krank hängt tiefer und ruhiger
             val amp = when {
+                !floating -> 0f
                 sleeping -> 6f
                 mood == Mood.HAPPY -> 28f
                 mood == Mood.SAD || mood == Mood.SICK || mood == Mood.TIRED -> 7f
                 else -> 18f
             }
-            val sink = if (mood == Mood.SAD || mood == Mood.SICK) 14f else 0f
+            val sink = if (floating && (mood == Mood.SAD || mood == Mood.SICK)) 14f else 0f
             val sway = when { sleeping -> 1f; mood == Mood.HAPPY -> 4f; else -> 2.5f }
             val figure = Modifier
                 .fillMaxSize()
-                .padding(start = 60.dp, end = 60.dp, top = 40.dp, bottom = 14.dp)
+                .padding(start = 60.dp, end = 60.dp, top = 40.dp, bottom = if (floating) 14.dp else 8.dp)
                 .graphicsLayer {
                     val jump = if (hop.value < 1f) sin(hop.value * PI.toFloat()) else 0f
                     transformOrigin = TransformOrigin(0.5f, 1f)
                     translationY = -bob * amp + sink - jump * jumpHeight
                     translationX = if (shake.value < 1f) sin(shake.value * 6f * PI.toFloat()) * 14f * (1f - shake.value) else 0f
                     // Atmen: leicht strecken und stauchen
-                    val b = breath * (if (sleeping) 0.035f else 0.02f)
+                    val b = breath * (if (sleeping) 0.035f else if (floating) 0.02f else 0.03f)
                     scaleX = 1f - b + jump * 0.06f
                     scaleY = 1f + b - jump * 0.04f
                     rotationZ = if (stage == Stage.EGG) wobble * 8f else swing * sway

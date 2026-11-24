@@ -7,18 +7,22 @@ import java.io.File
 import java.util.zip.ZipInputStream
 
 /** Beschreibung eines Figuren-Pakets (pack.json im ZIP, alles optional). */
-data class PackManifest(val name: String = "", val petName: String = "", val author: String = "") {
-    fun toJson(): String = JSONObject().put("name", name).put("petName", petName).put("author", author).toString(2)
+data class PackManifest(val name: String = "", val petName: String = "", val author: String = "", val floating: Boolean? = null) {
+    fun toJson(): String = JSONObject().put("name", name).put("petName", petName).put("author", author)
+        .apply { if (floating != null) put("float", floating) }.toString(2)
 
     companion object {
         fun parse(text: String): PackManifest? = runCatching {
             val o = JSONObject(text.trim().removePrefix("\uFEFF"))
-            PackManifest(o.optString("name", ""), o.optString("petName", ""), o.optString("author", ""))
+            PackManifest(
+                o.optString("name", ""), o.optString("petName", ""), o.optString("author", ""),
+                if (o.has("float")) o.optBoolean("float", true) else null,
+            )
         }.getOrNull()
     }
 }
 
-data class PackInfo(val id: String, val name: String, val petName: String, val images: Int)
+data class PackInfo(val id: String, val name: String, val petName: String, val images: Int, val floating: Boolean? = null)
 
 /**
  * Figuren-Pakete: ZIP-Dateien mit Bildern je Stufe und Laune.
@@ -34,12 +38,17 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
         private set(v) { prefs.edit().putString(activeKey, v).apply() }
     private val activeKey = if (store.petId == "p1") "active" else "active_${store.petId}"
 
+    /** Schwebt die Figur (true) oder steht sie auf dem Boden (false)? Pro Tierchen. */
+    var floating: Boolean
+        get() = prefs.getBoolean("float_${store.petId}", true)
+        set(v) { prefs.edit().putBoolean("float_${store.petId}", v).apply() }
+
     fun list(): List<PackInfo> = root.listFiles()?.filter { it.isDirectory }?.mapNotNull { info(it) }?.sortedBy { it.name.lowercase() } ?: emptyList()
 
     private fun info(dir: File): PackInfo? {
         val m = runCatching { PackManifest.parse(File(dir, "pack.json").readText()) }.getOrNull() ?: return null
         val images = dir.listFiles()?.count { it.extension == "png" || it.extension == "anim" } ?: 0
-        return PackInfo(dir.name, m.name.ifBlank { dir.name }, m.petName, images)
+        return PackInfo(dir.name, m.name.ifBlank { dir.name }, m.petName, images, m.floating)
     }
 
     /** Liest ein ZIP ein. Gibt das neue Paket und die nicht zugeordneten Dateinamen zurück. */
@@ -66,8 +75,11 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
                                 manifest = PackManifest.parse(bytes.decodeToString()) ?: manifest
                             ext in setOf("png", "webp", "gif", "jpg", "jpeg") -> {
                                 val target = SpriteNames.guess(base)
-                                if (target != null && SpriteStore.writeImage(tmp, SpriteStore.keyOf(target.first, target.second), bytes)) count++
-                                else unknown += base
+                                when {
+                                    target == null -> unknown += "$base (Name unbekannt)"
+                                    SpriteStore.writeImage(tmp, SpriteStore.keyOf(target.first, target.second), bytes) -> count++
+                                    else -> unknown += "$base (Bild nicht lesbar, ${bytes.size / 1024} KB)"
+                                }
                             }
                             ext in setOf("txt", "md") -> {}
                             else -> unknown += base
@@ -117,6 +129,7 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
         src.listFiles()?.filter { it.extension == "png" || it.extension == "anim" }?.forEach { it.copyTo(File(store.dir, it.name), overwrite = true) }
         store.clearCache()
         activeId = id
+        info.floating?.let { floating = it }
         return info
     }
 
@@ -126,6 +139,7 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
         store.dir.listFiles()?.forEach { it.delete() }
         store.clearCache()
         activeId = ""
+        floating = true
     }
 
     fun delete(id: String) {

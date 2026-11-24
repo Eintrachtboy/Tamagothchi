@@ -142,6 +142,14 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
                         else TextButton(onClick = { confirmDelete = p.id }) { Text("Löschen") }
                     }
                 }
+                val floating by vm.floating.collectAsState()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Figur schwebt")
+                        Text("Aus: steht auf dem Boden und atmet nur (gut für sitzende Figuren).", style = MaterialTheme.typography.bodySmall)
+                    }
+                    androidx.compose.material3.Switch(checked = floating, onCheckedChange = { vm.setFloating(it) })
+                }
                 HorizontalDivider()
                 Text("Eigene Bilder", fontWeight = FontWeight.Bold)
                 Text(

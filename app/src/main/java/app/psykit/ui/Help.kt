@@ -58,7 +58,7 @@ Technische Regeln für JEDES Bild:
 - alle Bilder einer Stufe gleich groß und gleich positioniert, damit der Wechsel zwischen den Launen nicht springt
 
 Pack zum Schluss alles in eine ZIP-Datei namens [Paketname].zip, ohne Unterordner, mit genau diesen Dateinamen und zusätzlich einer Datei pack.json mit diesem Inhalt:
-{"name": "[Paketname]", "petName": "[Name des Tierchens]"}
+{"name": "[Paketname]", "petName": "[Name des Tierchens]", "float": [true wenn die Figur schweben soll, sonst false]}
 
 Wenn du nicht alle 25 Bilder auf einmal schaffst, fang mit egg.webp und den 6 baby-Bildern an und gib mir dazu schon die ZIP. Fehlende Bilder ersetzt die App automatisch durch das normale Bild."""
 
@@ -96,8 +96,8 @@ fun HelpDialog(onDismiss: () -> Unit) {
                         "├─ teen.webp … teen_sleeping.webp\n" +
                         "└─ adult.webp … adult_sleeping.webp",
                 )
-                P("pack.json enthält den Namen des Pakets und optional den Namen des Tierchens:")
-                Mono("{\"name\": \"Graufuchs\", \"petName\": \"Grauli\"}")
+                P("pack.json enthält den Namen des Pakets, optional den Namen des Tierchens und ob die Figur schwebt (\"float\": false = steht auf dem Boden, z. B. für sitzende oder laufende Tiere):")
+                Mono("{\"name\": \"Graufuchs\", \"petName\": \"Grauli\", \"float\": false}")
                 P("Deutsche Namen gehen auch: ei, baby, kind, jugendlich, erwachsen bzw. 1 bis 5, und für die Laune gluecklich, traurig, hungrig, krank, schlaeft (z. B. „kind_traurig.webp“). Unterordner im ZIP sind egal. Fehlt ein Bild, nimmt die App das normale Bild der Stufe, und fehlt eine ganze Stufe, das Bild der nächsten Stufe.")
 
                 H("Was die Bilder zeigen sollen")

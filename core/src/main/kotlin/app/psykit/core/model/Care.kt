@@ -13,14 +13,16 @@ enum class Food(val label: String, val emoji: String, val satiety: Float, val jo
     MUSHROOM("Pilz", "🍄", 20f, 2f),
     MILK("Milch", "🥛", 10f, 6f),
     CAKE("Kuchen", "🍰", 10f, 14f, sweet = true),
-    CANDY("Bonbon", "🍬", 4f, 12f, sweet = true);
+    CANDY("Bonbon", "🍬", 4f, 12f, sweet = true),
+    /** Selbst geerntet, nur verfügbar, wenn Vorrat da ist. */
+    GARDEN("Gartenbeeren", "🫐", 18f, 14f);
 
     companion object {
         /** Jedes Tierchen hat feste, aber geheime Vorlieben (abhängig vom Schlupfzeitpunkt). */
-        fun likesOf(seed: Long): List<Food> = entries.shuffled(Random(seed)).take(2)
+        fun likesOf(seed: Long): List<Food> = entries.filter { it != GARDEN }.shuffled(Random(seed)).take(2)
         fun dislikesOf(seed: Long): List<Food> {
             val likes = likesOf(seed)
-            return entries.filter { it !in likes && !it.sweet }.shuffled(Random(seed * 31 + 7)).take(1)
+            return entries.filter { it !in likes && !it.sweet && it != GARDEN }.shuffled(Random(seed * 31 + 7)).take(1)
         }
     }
 }

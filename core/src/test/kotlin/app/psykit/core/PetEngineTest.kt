@@ -155,4 +155,32 @@ class PetEngineTest {
         val dmg = BattleEngine.damage(a, b, a.moves.first(), Random(1))
         assertTrue(dmg > 0)
     }
+
+    @Test fun gardenGrowsWithWateringOnThreeDays() {
+        var s = PetEngine.advance(hatched(at(9)), at(10), zone)
+        s = PetEngine.plant(s, 0, at(10), zone).state
+        for (d in 1..3) {
+            s = PetEngine.advance(s, at(11, day = d), zone)
+            val r = PetEngine.water(s, 0, at(11, day = d), zone)
+            assertTrue(r.success, r.message)
+            s = r.state
+            assertFalse(PetEngine.water(s, 0, at(12, day = d), zone).success) // nur einmal pro Tag
+        }
+        assertEquals(app.psykit.core.model.PlotStage.RIPE, PetEngine.plotStage(s.plots[0], at(12, day = 3), zone))
+        s = PetEngine.harvest(s, 0, at(12, day = 3), zone).state
+        assertEquals(PetEngine.HARVEST_BERRIES, s.berryStock)
+        val fed = PetEngine.feed(s.copy(satiety = 20f), Food.GARDEN, at(13, day = 3))
+        assertEquals(PetEngine.HARVEST_BERRIES - 1, fed.state.berryStock)
+    }
+
+    @Test fun dailyQuestsTrackAndReset() {
+        var s = PetEngine.advance(hatched(at(9)), at(10), zone)
+        val qs = PetEngine.quests(s)
+        assertEquals(3, qs.size)
+        qs.forEach { q -> repeat(q.target.coerceAtMost(5)) { s = PetEngine.progress(s, q, if (q.target > 5) q.target else 1) } }
+        qs.forEach { q -> val r = PetEngine.claimQuest(s, q); assertTrue(r.success, r.message); s = r.state }
+        assertTrue(s.berryStock >= 2)
+        val next = PetEngine.advance(s, at(10, day = 2), zone)
+        assertTrue(next.questsClaimed.isEmpty())
+    }
 }

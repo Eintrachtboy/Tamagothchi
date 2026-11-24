@@ -1,6 +1,9 @@
 package app.psykit.core.engine
 
 import app.psykit.core.model.Food
+import app.psykit.core.model.Plot
+import app.psykit.core.model.PlotStage
+import app.psykit.core.model.Quest
 import app.psykit.core.model.GameKind
 import app.psykit.core.model.PetState
 import app.psykit.core.model.Reaction
@@ -46,6 +49,8 @@ object PetEngine {
 
     /** Schritte pro „Spaziergang“, nach dem das Tierchen etwas schmutzig wird. */
     const val STEPS_PER_DIRT = 1500L
+    const val GARDEN_DAYS = 3
+    const val HARVEST_BERRIES = 3
     const val MAX_DIRT = 6
 
     // Streicheln: Geschwindigkeit in dp pro Sekunde
@@ -63,7 +68,10 @@ object PetEngine {
             t += dt
             st = tick(st, dt / 60_000f, t, zone)
         }
-        return st.copy(lastUpdate = now)
+        st = st.copy(lastUpdate = now)
+        val today = epochDay(now, zone)
+        if (st.questDay != today) st = st.copy(questDay = today, questProgress = emptyMap(), questsClaimed = emptyList())
+        return st
     }
 
     private fun tick(s0: PetState, minutes: Float, time: Long, zone: ZoneId): PetState {
@@ -147,6 +155,7 @@ object PetEngine {
 
     fun feed(s: PetState, food: Food, now: Long): ActionResult {
         blocked(s)?.let { return it }
+        if (food == Food.GARDEN && s.berryStock <= 0) return ActionResult(s, "Keine Gartenbeeren mehr. Ernte neue im Garten!", false)
         val likes = Food.likesOf(s.bornAt)
         val dislikes = Food.dislikesOf(s.bornAt)
 
@@ -162,6 +171,7 @@ object PetEngine {
         }
 
         var ns = s.copy(
+            berryStock = if (food == Food.GARDEN) s.berryStock - 1 else s.berryStock,
             satiety = s.satiety + food.satiety,
             happiness = s.happiness + food.joy,
             minutesSincePoop = s.minutesSincePoop + food.satiety,
@@ -331,6 +341,87 @@ object PetEngine {
         s.copy(trust = s.trust + 2f + 4f * ratio, happiness = s.happiness + 10f + 10f * ratio, kindCount = s.kindCount + 1),
     )
 
+    // ---------------- Garten ----------------
+
+    fun plotStage(p: Plot, now: Long, tz: ZoneId): PlotStage {
+        if (p.plantedAt == 0L) return PlotStage.EMPTY
+        val today = epochDay(now, tz)
+        val lastCare = if (p.lastWateredDay >= 0) p.lastWateredDay else epochDay(p.plantedAt, tz)
+        return when {
+            p.waterDays >= GARDEN_DAYS -> PlotStage.RIPE
+            today - lastCare >= 3 -> PlotStage.WITHERED
+            p.waterDays == 0 -> PlotStage.SEED
+            p.waterDays == 1 -> PlotStage.SPROUT
+            else -> PlotStage.BUSH
+        }
+    }
+
+    private fun withPlot(s: PetState, i: Int, p: Plot): PetState {
+        val plots = (s.plots + List(maxOf(0, 3 - s.plots.size)) { Plot() }).toMutableList()
+        plots[i] = p
+        return s.copy(plots = plots)
+    }
+
+    fun plant(s: PetState, i: Int, now: Long, tz: ZoneId): ActionResult {
+        val p = s.plots.getOrElse(i) { Plot() }
+        val st = plotStage(p, now, tz)
+        if (st != PlotStage.EMPTY && st != PlotStage.WITHERED) return ActionResult(s, "Hier wächst schon etwas.", false)
+        return ActionResult(withPlot(s, i, Plot(plantedAt = now)), "Beerensamen gesät! Gieße ihn an $GARDEN_DAYS Tagen, dann kannst du ernten.", reaction = Reaction.HAPPY)
+    }
+
+    /** Gemeinsam mit dem Tierchen gießen: einmal pro Tag und Beet. */
+    fun water(s: PetState, i: Int, now: Long, tz: ZoneId): ActionResult {
+        if (s.stage == Stage.EGG) return blocked(s)!!
+        if (s.sleeping) return ActionResult(s, "${s.name} schläft. Gießen macht ihr zusammen, wenn es wach ist.", false, Reaction.SLEEPY)
+        val p = s.plots.getOrElse(i) { Plot() }
+        val today = epochDay(now, tz)
+        return when (plotStage(p, now, tz)) {
+            PlotStage.EMPTY -> ActionResult(s, "Erst etwas pflanzen.", false)
+            PlotStage.WITHERED -> ActionResult(s, "Zu spät, die Pflanze ist vertrocknet. Pflanz neu!", false)
+            PlotStage.RIPE -> ActionResult(s, "Die Beeren sind reif. Ernten!", false)
+            else -> if (p.lastWateredDay == today) ActionResult(s, "Dieses Beet hat heute schon Wasser bekommen.", false)
+            else {
+                val np = p.copy(lastWateredDay = today, waterDays = p.waterDays + 1)
+                var ns = kind(withPlot(s, i, np), 0.5f).copy(happiness = s.happiness + 4f, energy = s.energy - 2f)
+                ns = progress(ns, Quest.WATER)
+                val msg = if (np.waterDays >= GARDEN_DAYS) "${s.name} hilft fleißig mit der Gießkanne. Die Beeren sind reif!" else "${s.name} gießt mit dir zusammen. Es wächst! (${np.waterDays}/$GARDEN_DAYS)"
+                withExp(ns, 2, msg, Reaction.HAPPY)
+            }
+        }
+    }
+
+    fun harvest(s: PetState, i: Int, now: Long, tz: ZoneId): ActionResult {
+        val p = s.plots.getOrElse(i) { Plot() }
+        if (plotStage(p, now, tz) != PlotStage.RIPE) return ActionResult(s, "Noch nicht reif.", false)
+        val ns = progress(withPlot(s, i, Plot()).copy(berryStock = s.berryStock + HARVEST_BERRIES, happiness = s.happiness + 5f), Quest.HARVEST)
+        return withExp(ns, 5, "Ernte! $HARVEST_BERRIES Gartenbeeren. Du findest sie beim Füttern.", Reaction.JUMP)
+    }
+
+    // ---------------- Tagesaufgaben ----------------
+
+    fun quests(s: PetState): List<Quest> = Quest.forDay(s.questDay, s.bornAt)
+
+    fun progress(s: PetState, q: Quest, n: Int = 1): PetState =
+        if (q !in quests(s)) s else s.copy(questProgress = s.questProgress + (q.name to ((s.questProgress[q.name] ?: 0) + n)))
+
+    fun questDone(s: PetState, q: Quest) = (s.questProgress[q.name] ?: 0) >= q.target
+
+    /** Erfolgreiche Aktion zählt für eine Tagesaufgabe. */
+    fun track(r: ActionResult, q: Quest): ActionResult = if (r.success) r.copy(state = progress(r.state, q)) else r
+
+    fun claimQuest(s: PetState, q: Quest): ActionResult {
+        if (q !in quests(s) || !questDone(s, q)) return ActionResult(s, "Diese Aufgabe ist noch nicht geschafft.", false)
+        if (q.name in s.questsClaimed) return ActionResult(s, "Belohnung schon abgeholt.", false)
+        var ns = s.copy(questsClaimed = s.questsClaimed + q.name, happiness = s.happiness + 5f)
+        var exp = q.rewardExp
+        var msg = "Aufgabe geschafft: ${q.label}! +${q.rewardExp} EP."
+        if (ns.questsClaimed.size == quests(s).size) {
+            exp += 10; ns = ns.copy(berryStock = ns.berryStock + 2)
+            msg += " Alle Aufgaben erledigt: +10 EP und 2 Gartenbeeren als Bonus!"
+        }
+        return withExp(ns, exp, msg, Reaction.JUMP)
+    }
+
     // ---------------- Schritte ----------------
 
     /** Neu gezählte Schritte: werden „offen“ zum Einlösen und machen nach Spaziergängen schmutzig. */
@@ -343,7 +434,7 @@ object PetEngine {
             walk -= STEPS_PER_DIRT
             if (s.stage != Stage.EGG) { dirt += 1; hygiene -= 6f }
         }
-        return clamp(s.copy(pendingSteps = s.pendingSteps + steps, walkSteps = walk, dirt = dirt, hygiene = hygiene))
+        return progress(clamp(s.copy(pendingSteps = s.pendingSteps + steps, walkSteps = walk, dirt = dirt, hygiene = hygiene)), Quest.STEPS, steps.toInt())
     }
 
     /** 100 Schritte = 1 EP, je 500 Schritte +5 Laune (max. +25). Rest bleibt offen. */

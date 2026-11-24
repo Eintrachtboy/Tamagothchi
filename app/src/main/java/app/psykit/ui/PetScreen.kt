@@ -92,6 +92,7 @@ import kotlin.math.roundToInt
 enum class Mode(val icon: String, val label: String) {
     FEED("🍙", "Füttern"), STROKE("🤚", "Streicheln"), CLEAN("🧽", "Putzen"),
     SLEEP("🌙", "Schlafen"), PLAY("🎲", "Spielen"), BONUS("🫐", "Bonus"),
+    GARDEN("🌱", "Garten"), QUESTS("📋", "Aufgaben"),
 }
 
 @Composable
@@ -100,6 +101,7 @@ fun PetScreen(vm: PetViewModel) {
     val message by vm.message.collectAsState()
     val stepsToday by vm.stepsToday.collectAsState()
     val reaction by vm.reaction.collectAsState()
+    val watering by vm.watering.collectAsState()
     val spriteVersion by vm.spriteVersion.collectAsState()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -313,6 +315,7 @@ fun PetScreen(vm: PetViewModel) {
                             toolPos?.let { p -> HandEmoji(if (shower) "🚿" else "🧽", p) }
                         }
                         Mode.SLEEP -> Blanket(blanket)
+                        Mode.GARDEN -> WateringOverlay(watering)
                         else -> {}
                     }
                 },
@@ -398,6 +401,8 @@ fun PetScreen(vm: PetViewModel) {
                                     }
                                 }
                             }
+                            Mode.GARDEN -> GardenPanel(s, vm)
+                            Mode.QUESTS -> QuestPanel(s, vm)
                             Mode.BONUS -> {
                                 Text("Beerenfang", fontWeight = FontWeight.Bold)
                                 Text(gameInfo(GameKind.BERRIES) + " Trainiert ${GameKind.BERRIES.trains}.", style = MaterialTheme.typography.bodyMedium)
@@ -537,19 +542,20 @@ private fun androidx.compose.foundation.layout.BoxScope.Blanket(progress: Float)
 @Composable
 private fun ModeBar(mode: Mode, onSelect: (Mode) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Mode.entries.chunked(3).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Mode.entries.chunked(4).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { m ->
                     val sel = m == mode
                     val mod = Modifier.weight(1f).height(60.dp)
                     val content: @Composable () -> Unit = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(m.icon, style = MaterialTheme.typography.titleMedium)
-                            Text(m.label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                            Text(m.label, style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
                         }
                     }
-                    if (sel) Button(onClick = { onSelect(m) }, modifier = mod) { content() }
-                    else FilledTonalButton(onClick = { onSelect(m) }, modifier = mod) { content() }
+                    val pad = androidx.compose.foundation.layout.PaddingValues(horizontal = 2.dp, vertical = 4.dp)
+                    if (sel) Button(onClick = { onSelect(m) }, modifier = mod, contentPadding = pad) { content() }
+                    else FilledTonalButton(onClick = { onSelect(m) }, modifier = mod, contentPadding = pad) { content() }
                 }
             }
         }
@@ -565,11 +571,12 @@ private fun FoodTray(
     onDrop: () -> Unit,
 ) {
     Text("Zieh ein Essen in ${s.name}s Mund. Manches mag ${s.name} besonders, manches gar nicht. Zu viel Süßes macht träge.", style = MaterialTheme.typography.bodyMedium)
-    Food.entries.chunked(4).forEach { row ->
+    Food.entries.filter { it != Food.GARDEN || s.berryStock > 0 }.chunked(4).forEach { row ->
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
             row.forEach { f ->
                 var itemPos by remember { mutableStateOf(Offset.Zero) }
                 val badge = when (f) {
+                    Food.GARDEN -> "×${s.berryStock}"
                     in s.knownLikes -> "❤️"
                     in s.knownDislikes -> "👎"
                     else -> ""
@@ -598,6 +605,7 @@ private fun FoodTray(
                     if (badge.isNotEmpty()) Text(badge, fontSize = 12.sp, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp))
                 }
             }
+            repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
         }
     }
     if (s.sluggish) Text("🍬 ${s.name} ist gerade träge von den Süßigkeiten.", style = MaterialTheme.typography.bodySmall)

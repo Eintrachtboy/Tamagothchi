@@ -55,6 +55,13 @@ data class PetState(
     val trainDef: Int = 0,
     val trainSpd: Int = 0,
     val trainPsi: Int = 0,
+    // Garten
+    val plots: List<Plot> = List(3) { Plot() },
+    val berryStock: Int = 0,
+    // Tagesaufgaben
+    val questDay: Long = -1,
+    val questProgress: Map<String, Int> = emptyMap(),
+    val questsClaimed: List<String> = emptyList(),
 ) {
     val sluggish: Boolean get() = sluggishUntil > lastUpdate
 

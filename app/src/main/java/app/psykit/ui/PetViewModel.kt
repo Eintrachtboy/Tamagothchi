@@ -9,6 +9,7 @@ import app.psykit.core.engine.PetEngine
 import app.psykit.core.model.Food
 import app.psykit.core.model.GameKind
 import app.psykit.core.model.PetState
+import app.psykit.core.model.Quest
 import app.psykit.core.model.Reaction
 import app.psykit.core.model.Zone
 import app.psykit.core.model.Stage
@@ -72,10 +73,25 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     fun greet() { _message.value = PetEngine.greeting(state.value, System.currentTimeMillis(), repo.zone) }
 
-    fun feed(food: Food) = act { s, now -> PetEngine.feed(s, food, now) }
-    fun stroke(speedDp: Float) = act { s, now -> PetEngine.stroke(s, speedDp, now) }
-    fun scratch(zone: Zone) = act { s, now -> PetEngine.scratch(s, zone, now, repo.zone) }
-    fun clean(fraction: Float) = act { s, _ -> PetEngine.clean(s, fraction) }
+    fun feed(food: Food) = act { s, now -> PetEngine.track(PetEngine.feed(s, food, now), Quest.FEED) }
+    fun stroke(speedDp: Float) = act { s, now -> PetEngine.track(PetEngine.stroke(s, speedDp, now), Quest.STROKE) }
+    fun scratch(zone: Zone) = act { s, now ->
+        val r = PetEngine.scratch(s, zone, now, repo.zone)
+        if (r.reaction == Reaction.JUMP) PetEngine.track(r, Quest.SCRATCH) else r
+    }
+    fun clean(fraction: Float) = act { s, _ -> PetEngine.track(PetEngine.clean(s, fraction), Quest.CLEAN) }
+
+    // Garten & Tagesaufgaben
+    private val _watering = MutableStateFlow(0)
+    val watering: StateFlow<Int> = _watering
+    fun plant(i: Int) = act { s, now -> PetEngine.plant(s, i, now, repo.zone) }
+    fun water(i: Int) {
+        val before = state.value.plots.getOrNull(i)?.waterDays ?: 0
+        act { s, now -> PetEngine.water(s, i, now, repo.zone) }
+        if ((state.value.plots.getOrNull(i)?.waterDays ?: 0) > before) _watering.value++
+    }
+    fun harvest(i: Int) = act { s, now -> PetEngine.harvest(s, i, now, repo.zone) }
+    fun claimQuest(q: Quest) = act { s, _ -> PetEngine.claimQuest(s, q) }
     fun removePoop() = repo.update { s, _ -> PetEngine.removePoop(s) to Unit }
     fun putToBed(hummed: Boolean) = act { s, now -> PetEngine.putToBed(s, now, repo.zone, hummed) }
     fun wake() = act { s, now -> PetEngine.wake(s, now, repo.zone) }
@@ -84,7 +100,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     /** Gibt null zurück, wenn gespielt werden darf, sonst den Grund. */
     fun checkPlay(): String? = PetEngine.canPlay(state.value)?.message?.also { _message.value = it }
     fun finishGame(kind: GameKind, score: Int, max: Int, bonusExp: Int = 0) =
-        act { s, _ -> PetEngine.gameResult(s, kind, score, max, bonusExp) }
+        act { s, _ -> PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp), Quest.PLAY) }
     fun todaysGame(): GameKind = GameKind.dailyOn(PetEngine.epochDay(System.currentTimeMillis(), repo.zone))
 
     fun rename(name: String) = repo.update { s, _ -> PetEngine.rename(s, name) to Unit }

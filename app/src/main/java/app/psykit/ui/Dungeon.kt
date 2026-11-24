@@ -80,11 +80,15 @@ fun DungeonPanel(s: PetState, onOpen: () -> Unit) {
         style = MaterialTheme.typography.bodySmall,
     )
     Text("Ein Lauf kostet einen Schlüssel und Energie. Jeden Tag gibt es einen Schlüssel gratis, weitere für je 3000 Schritte.", style = MaterialTheme.typography.bodySmall)
+    if (s.run == null) DungeonEngine.cannotEnter(s, s.dungeonProgress.coerceAtMost(Floors.DEPTH_START - 1))?.let {
+        Text("⚠️ $it", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+    }
     Button(onClick = onOpen, enabled = s.stage != Stage.EGG) { Text(if (s.run != null) "Weiter im Dungeon" else "Dungeon öffnen") }
 }
 
 @Composable
 fun DungeonDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () -> Unit) {
+    LaunchedEffect(Unit) { vm.say("") }
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp)) {
@@ -93,9 +97,13 @@ fun DungeonDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () ->
                     Column(Modifier.weight(1f)) {
                         val title = run?.let { val f = Floors.get(it.floor); "${World.of(f.world).emoji} ${f.code} · ${f.name}" } ?: "⚔️ Dungeon"
                         Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1)
-                        Text("✨ ${s.stardust} · 🗝️ ${s.keys} · ⚡ ${s.energy.toInt()}", style = MaterialTheme.typography.labelMedium)
+                        Text("✨ ${s.stardust} · 🗝️ ${s.keys} · ⚡ ${s.energy.toInt()} · ❤️ ${s.health.toInt()}", style = MaterialTheme.typography.labelMedium)
                     }
                     TextButton(onClick = onClose) { Text(if (run?.battle != null) "Pause" else "Schließen") }
+                }
+                val msg by vm.message.collectAsState()
+                if (run?.battle == null && msg.isNotEmpty()) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                    Text(msg, Modifier.padding(10.dp).fillMaxWidth(), style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
                 }
                 Spacer(Modifier.height(6.dp))
                 Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -121,6 +129,11 @@ fun DungeonDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () ->
 private fun FloorSelect(s: PetState, vm: PetViewModel) {
     var info by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val blocker = DungeonEngine.cannotEnter(s, s.dungeonProgress.coerceAtMost(Floors.DEPTH_START - 1))
+        if (blocker != null) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
+            Text("⚠️ $blocker", Modifier.padding(12.dp).fillMaxWidth(), fontWeight = FontWeight.Bold)
+        }
+        Text("Zum Betreten: 1 🗝️ Schlüssel, mindestens 30 ⚡ Energie und 40 Gesundheit, und das Tierchen muss wach sein.", style = MaterialTheme.typography.bodySmall)
         OutlinedButton(onClick = { info = !info }) { Text(if (info) "Regeln ausblenden" else "Wie funktioniert der Dungeon?") }
         if (info) DungeonRules()
         World.entries.forEach { w ->
@@ -162,8 +175,6 @@ private fun FloorSelect(s: PetState, vm: PetViewModel) {
                 }
             }
         }
-        val msg by vm.message.collectAsState()
-        if (msg.isNotEmpty()) Text(msg, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(12.dp))
     }
 }

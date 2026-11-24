@@ -1,5 +1,6 @@
 package app.psykit.ui
 
+import app.psykit.sprites.ReportEntry.Status as ReportStatus
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -210,9 +211,8 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
 /** Bericht zum letzten Import: jede Datei mit Rolle, Format, Auflösung, Frames, fps, Größe und Hinweisen. */
 @Composable
 fun ImportReportDialog(entries: List<app.psykit.sprites.ReportEntry>, onDismiss: () -> Unit) {
-    val S = app.psykit.sprites.ReportEntry.Status
-    val ok = entries.count { it.status == S.OK || it.status == S.WARN }
-    val rejected = entries.count { it.status == S.REJECTED }
+    val ok = entries.count { it.status == ReportStatus.OK || it.status == ReportStatus.WARN }
+    val rejected = entries.count { it.status == ReportStatus.REJECTED }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Import-Bericht") },
@@ -221,16 +221,16 @@ fun ImportReportDialog(entries: List<app.psykit.sprites.ReportEntry>, onDismiss:
                 Text("$ok übernommen" + (if (rejected > 0) " · $rejected abgelehnt" else ""), fontWeight = FontWeight.Bold)
                 entries.forEach { e ->
                     val (icon, color) = when (e.status) {
-                        S.OK -> "✓" to MaterialTheme.colorScheme.primary
-                        S.WARN -> "!" to MaterialTheme.colorScheme.tertiary
-                        S.REJECTED -> "✗" to MaterialTheme.colorScheme.error
-                        S.KEPT -> "↺" to MaterialTheme.colorScheme.secondary
-                        S.IGNORED -> "·" to MaterialTheme.colorScheme.outline
+                        ReportStatus.OK -> "✓" to MaterialTheme.colorScheme.primary
+                        ReportStatus.WARN -> "!" to MaterialTheme.colorScheme.tertiary
+                        ReportStatus.REJECTED -> "✗" to MaterialTheme.colorScheme.error
+                        ReportStatus.KEPT -> "↺" to MaterialTheme.colorScheme.secondary
+                        ReportStatus.IGNORED -> "·" to MaterialTheme.colorScheme.outline
                     }
                     Column {
                         Text("$icon ${e.file}" + (e.role?.let { " → $it" } ?: ""), fontWeight = FontWeight.Bold, color = color, style = MaterialTheme.typography.bodyMedium)
                         if (e.detail.isNotBlank()) Text(e.detail, style = MaterialTheme.typography.bodySmall)
-                        e.notes.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall, color = if (e.status == S.REJECTED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
+                        e.notes.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall, color = if (e.status == ReportStatus.REJECTED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
                 }
                 Text("Tipp: Mit dem Prüfskript psykit_pruefen.py siehst du das schon am PC, bevor du das ZIP überträgst.", style = MaterialTheme.typography.labelSmall)

@@ -72,7 +72,14 @@ class SpriteStore(context: Context) {
     }
 
     fun load(stage: Stage, v: SpriteVariant = SpriteVariant.BASE): Sprite? =
-        loadAny(stage, v, true) ?: if (v != SpriteVariant.BASE) loadAny(stage, SpriteVariant.BASE, false) else null
+        loadAny(stage, v, true)
+            ?: (if (v != SpriteVariant.BASE) loadAny(stage, SpriteVariant.BASE, false) else null)
+            ?: otherStages(stage).firstNotNullOfOrNull { loadAny(it, v, false) ?: loadAny(it, SpriteVariant.BASE, false) }
+
+    /** Fehlt für eine Stufe ein Bild, nimm das der nächstgelegenen Stufe (das Ei bleibt ein Ei). */
+    private fun otherStages(stage: Stage): List<Stage> =
+        if (stage == Stage.EGG) emptyList()
+        else Stage.entries.filter { it != Stage.EGG && it != stage }.sortedBy { kotlin.math.abs(it.ordinal - stage.ordinal) * 2 + if (it.ordinal > stage.ordinal) 1 else 0 }
 
     /** Animierte GIF/WebP unverändert übernehmen, damit die Animation erhalten bleibt. */
     private fun trySaveAnimated(stage: Stage, v: SpriteVariant, uri: Uri): Boolean {

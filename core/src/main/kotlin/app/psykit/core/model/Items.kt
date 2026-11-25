@@ -44,6 +44,8 @@ sealed interface Effect {
     data class ChestDust(val pct: Int) : Effect
     data class BattleExp(val pct: Int) : Effect
     data class GardenGrowth(val pct: Int) : Effect
+    data object FewerSnails : Effect
+    data object MixerBonus : Effect
 }
 
 /** Hüte, Brillen und Deko. world 0 = Laden. */
@@ -95,7 +97,15 @@ enum class Item(
     MOON_GLASSES("Mondbrille", Slot.EYES, Rarity.RARE, 5, 0, Look.MOON, "🌗", "+4 % Psi-Schaden", listOf(Effect.TypeDamage(AttackType.PSI, 4))),
     CUCKOO_CLOCK("Kuckucksuhr", Slot.DECO, Rarity.COMMON, 5, 0, Look.EMOJI, "🕰️", "+2 % Tempo", listOf(Effect.Speed(2))),
     STARRY_SKY("Sternenhimmel", Slot.DECO, Rarity.EPIC, 5, 0, Look.EMOJI, "🌌", "Kampfbeginn mit 2 extra Psi-Punkten", listOf(Effect.StartPsi(2))),
-    NIGHTMARE_MASK("Albtraummaske", Slot.HEAD, Rarity.LEGENDARY, 5, 0, Look.MASK, "🎭", "+10 % Schaden gegen Geister, immun gegen Verwirrung", listOf(Effect.BodyDamage(Body.GHOST, 10), Effect.NoConfusion));
+    NIGHTMARE_MASK("Albtraummaske", Slot.HEAD, Rarity.LEGENDARY, 5, 0, Look.MASK, "🎭", "+10 % Schaden gegen Geister, immun gegen Verwirrung", listOf(Effect.BodyDamage(Body.GHOST, 10), Effect.NoConfusion)),
+
+    // Belohnungen aus dem Garten (world 9: weder Laden noch Dungeon)
+    SCARECROW("Vogelscheuche", Slot.DECO, Rarity.COMMON, 9, 0, Look.EMOJI, "🎃", "Gartenbeeren wachsen 2 % schneller", listOf(Effect.GardenGrowth(2))),
+    GARDEN_GNOME("Gartenzwerg", Slot.DECO, Rarity.RARE, 9, 0, Look.EMOJI, "🧙", "Schnecken kommen halb so oft", listOf(Effect.FewerSnails)),
+    GLASS_MIXER("Glas-Mixer", Slot.DECO, Rarity.RARE, 9, 0, Look.EMOJI, "🫙", "Bei jedem Smoothie kommt eine Beere zurück", listOf(Effect.MixerBonus)),
+    WATERING_HAT("Gießkannenhut", Slot.HEAD, Rarity.LEGENDARY, 9, 0, Look.STRAW, "👒", "Gartenbeeren wachsen 6 % schneller", listOf(Effect.GardenGrowth(6)));
+
+    val gardenReward get() = world == 9
 
     val inShop get() = world == 0
 

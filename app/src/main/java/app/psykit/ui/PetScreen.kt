@@ -79,6 +79,7 @@ import androidx.core.content.ContextCompat
 import app.psykit.core.engine.DayPhase
 import app.psykit.core.engine.LevelSystem
 import app.psykit.core.engine.PetEngine
+import app.psykit.core.model.Berry
 import app.psykit.core.model.Food
 import app.psykit.core.model.GameKind
 import app.psykit.core.model.PetState
@@ -101,7 +102,6 @@ fun PetScreen(vm: PetViewModel) {
     val message by vm.message.collectAsState()
     val stepsToday by vm.stepsToday.collectAsState()
     val reaction by vm.reaction.collectAsState()
-    val watering by vm.watering.collectAsState()
     val floating by vm.floating.collectAsState()
     val spriteVersion by vm.spriteVersion.collectAsState()
     val headPoint by vm.headPoint.collectAsState()
@@ -109,6 +109,8 @@ fun PetScreen(vm: PetViewModel) {
     val scope = rememberCoroutineScope()
 
     var mode by rememberSaveable { mutableStateOf(Mode.STROKE) }
+    var gardenSeed by remember { mutableStateOf(Berry.BLUE) }
+    var fertilizeMode by remember { mutableStateOf(false) }
     var game by remember { mutableStateOf<GameKind?>(null) }
     var showStats by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -297,7 +299,15 @@ fun PetScreen(vm: PetViewModel) {
             Header(s, onPets = { showPets = true }, onInfo = { showStats = true }, onSettings = { showSettings = true })
             if (!isEgg) StatRings(s)
 
-            PetScene(
+            if (mode == Mode.GARDEN && !isEgg) GardenScene(
+                vm, s, sprite, gardenSeed, fertilizeMode,
+                onFertilized = { fertilizeMode = false },
+                modifier = Modifier.onGloballyPositioned {
+                    val b = it.boundsInRoot()
+                    sceneTopLeft = b.topLeft
+                    sceneSize = it.size
+                },
+            ) else PetScene(
                 stage = s.stage, mood = s.mood, sleeping = s.sleeping, poops = s.poops, phase = phase,
                 custom = sprite, customIsVariant = sprite?.exact == true && variant != SpriteVariant.BASE,
                 reaction = reaction,
@@ -325,7 +335,6 @@ fun PetScreen(vm: PetViewModel) {
                             toolPos?.let { p -> HandEmoji(when (tool) { 1 -> "🚿"; 2 -> "🧹"; else -> "🧽" }, p) }
                         }
                         Mode.SLEEP -> Blanket(blanket)
-                        Mode.GARDEN -> WateringOverlay(watering)
                         else -> {}
                     }
                 },
@@ -413,7 +422,7 @@ fun PetScreen(vm: PetViewModel) {
                                     }
                                 }
                             }
-                            Mode.GARDEN -> GardenPanel(s, vm)
+                            Mode.GARDEN -> GardenPanel(s, vm, gardenSeed, { gardenSeed = it }, fertilizeMode, { fertilizeMode = it })
                             Mode.QUESTS -> QuestPanel(s, vm)
                             Mode.DUNGEON -> DungeonPanel(s, onOpen = { showDungeon = true })
                             Mode.SHOP -> ShopPanel(s, onShop = { showShop = true }, onBook = { showBook = true })

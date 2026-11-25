@@ -57,7 +57,19 @@ data class PetState(
     val trainPsi: Int = 0,
     // Garten
     val plots: List<Plot> = List(3) { Plot() },
-    val berryStock: Int = 0,
+    val berryStock: Int = 0,          // Blaubeeren (früher „Gartenbeeren“)
+    val starBerries: Int = 0,
+    val psiBerries: Int = 0,
+    val goldBerries: Int = 0,
+    val goldSeeds: Int = 0,
+    val bedsUnlocked: Int = 3,
+    val compost: Int = 0,             // weggeschaufelte Häufchen, 3 = 1 Dünger
+    val fertilizer: Int = 0,
+    val canLevel: Int = 0,            // 0 normal, 1 Kupfer, 2 Silber, 3 Gold
+    val harvestsTotal: Int = 0,
+    val berriesHarvested: List<String> = emptyList(),
+    val smoothiesFound: List<String> = emptyList(),
+    val gardenRewards: List<String> = emptyList(),
     // Tagesaufgaben
     val questDay: Long = -1,
     val questProgress: Map<String, Int> = emptyMap(),

@@ -164,21 +164,24 @@ class PetEngineTest {
         assertTrue(b.moves.isNotEmpty())
     }
 
-    @Test fun gardenGrowsWithWateringOnThreeDays() {
+    @Test fun blueberryRipensWithinOneDay() {
         var s = PetEngine.advance(hatched(at(9)), at(10), zone)
         s = PetEngine.plant(s, 0, at(10), zone).state
-        for (d in 1..3) {
-            s = PetEngine.advance(s, at(11, day = d), zone)
-            val r = PetEngine.water(s, 0, at(11, day = d), zone)
-            assertTrue(r.success, r.message)
-            s = r.state
-            assertFalse(PetEngine.water(s, 0, at(12, day = d), zone).success) // nur einmal pro Tag
-        }
-        assertEquals(app.psykit.core.model.PlotStage.RIPE, PetEngine.plotStage(s.plots[0], at(12, day = 3), zone))
-        s = PetEngine.harvest(s, 0, at(12, day = 3), zone).state
-        assertEquals(PetEngine.HARVEST_BERRIES, s.berryStock)
-        val fed = PetEngine.feed(s.copy(satiety = 20f), Food.GARDEN, at(13, day = 3))
-        assertEquals(PetEngine.HARVEST_BERRIES - 1, fed.state.berryStock)
+        s = PetEngine.water(s, 0, at(10), zone).state
+        assertEquals(1, s.plots[0].waterings)
+        // zu früh: zählt nicht als Wachstum
+        s = PetEngine.water(s, 0, at(12), zone).state
+        assertEquals(1, s.plots[0].waterings)
+        // Unkraut/Schnecke sind Zufall: für den Test entfernen
+        s = PetEngine.advance(s, at(17), zone)
+        s = s.copy(plots = s.plots.map { it.copy(weedSince = 0, weedAt = 0, snailSince = 0, snailAt = 0) })
+        s = PetEngine.water(s, 0, at(17), zone).state
+        assertEquals(app.psykit.core.model.PlotStage.RIPE, PetEngine.plotStage(s.plots[0], at(17), zone))
+        s = PetEngine.harvest(s, 0, at(17), zone).state
+        assertTrue(s.berryStock >= 3)
+        val before = s.berryStock
+        val fed = PetEngine.feed(s.copy(satiety = 20f), Food.GARDEN, at(18))
+        assertEquals(before - 1, fed.state.berryStock)
     }
 
     @Test fun dailyQuestsTrackAndReset() {

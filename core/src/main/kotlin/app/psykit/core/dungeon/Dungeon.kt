@@ -86,7 +86,7 @@ enum class RoomType(val label: String, val emoji: String) {
 }
 
 enum class EventKind(val title: String, val text: String, val yes: String, val no: String) {
-    HEDGEHOG("Ein verletzter Igel", "Ein kleiner Igel hat Hunger und schaut dich traurig an.", "Eine Gartenbeere geben", "Weitergehen"),
+    HEDGEHOG("Ein verletzter Igel", "Ein kleiner Igel hat Hunger und schaut dich traurig an.", "Eine Beere geben", "Weitergehen"),
     LOCKED_CHEST("Eine verschlossene Kiste", "Eine schwere Kiste mit rostigem Schloss.", "Mit Wucht aufbrechen (kostet 10 % KP)", "Liegen lassen"),
     WELL("Ein Wunschbrunnen", "Man sagt, er bringt Glück, wenn man etwas hineinwirft.", "20 Sternenstaub hineinwerfen", "Weitergehen"),
     MUSHROOM("Ein leuchtender Pilz", "Er riecht verlockend. Ob der bekömmlich ist?", "Probieren", "Lieber nicht"),
@@ -237,8 +237,10 @@ object DungeonEngine {
                 val pct = Item.sum<Effect.ChestDust>(p) { it.pct } + Item.sum<Effect.DungeonDust>(p) { it.pct }
                 val dust = (15 * w * (1 + rng.nextDouble() * 0.5) * (1 + pct / 100.0)).roundToInt()
                 val item = rollItem(w, rng, boss = false)
+                val seed = w >= 2 && rng.nextInt(10) == 0
+                if (seed) ns = ns.copy(goldSeeds = ns.goldSeeds + 1)
                 r = r.copy(dust = r.dust + dust, items = r.items + item.name, chests = r.chests + 1,
-                    note = "In der Truhe: $dust Sternenstaub und ${item.label} (${item.rarity.label}).")
+                    note = "In der Truhe: $dust Sternenstaub und ${item.label} (${item.rarity.label})." + if (seed) " Und ein Goldbeeren-Samen! 🌟" else "")
                 ns = PetEngine.progress(ns, Quest.CHEST)
                 r = completeRoom(r)
             }
@@ -462,8 +464,16 @@ object DungeonEngine {
         var ns = p
         var r = run
         val note = if (!accept) "Du gehst weiter." else when (ev) {
-            EventKind.HEDGEHOG -> if (p.berryStock <= 0) "Du hast keine Gartenbeeren dabei." else {
-                ns = ns.copy(berryStock = p.berryStock - 1)
+            EventKind.HEDGEHOG -> if (p.goldBerries > 0 && p.keys < DungeonEngine.MAX_KEYS) {
+                ns = ns.copy(goldBerries = p.goldBerries - 1, keys = p.keys + 1)
+                "Der Igel strahlt über die Goldbeere und schenkt dir einen Schlüssel! 🗝️"
+            } else if (p.berryStock + p.starBerries + p.psiBerries + p.goldBerries <= 0) "Du hast keine Beeren dabei." else {
+                ns = when {
+                    p.berryStock > 0 -> ns.copy(berryStock = p.berryStock - 1)
+                    p.starBerries > 0 -> ns.copy(starBerries = p.starBerries - 1)
+                    p.psiBerries > 0 -> ns.copy(psiBerries = p.psiBerries - 1)
+                    else -> ns.copy(goldBerries = p.goldBerries - 1)
+                }
                 if (rng.nextBoolean()) { val it = rollItem(w, rng, false); r = r.copy(items = r.items + it.name); "Der Igel schenkt dir zum Dank: ${it.label}!" }
                 else { r = r.copy(dust = r.dust + 40 * w); "Der Igel zeigt dir ein Versteck mit ${40 * w} Sternenstaub." }
             }

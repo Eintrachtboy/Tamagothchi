@@ -60,7 +60,8 @@ class DungeonTest {
         assertEquals(20, MoveId.entries.count { it.source is app.psykit.core.battle.MoveSource.Hidden })
         assertEquals(17, Shop.moves.size)
         (0..19).forEach { assertNotNull(MoveId.hiddenIn(it), "Ebene $it ohne versteckte Attacke") }
-        assertEquals(33, Item.entries.size)
+        assertEquals(33, Item.entries.count { !it.gardenReward })
+        assertEquals(4, Item.entries.count { it.gardenReward })
         (1..5).forEach { w -> assertEquals(5, Item.ofWorld(w).size); assertEquals(5, EnemyKind.ofWorld(w).size) }
         assertEquals(20, Floors.all.size)
     }

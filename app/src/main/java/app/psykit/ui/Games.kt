@@ -65,8 +65,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import app.psykit.core.model.GameKind
 import app.psykit.core.model.Mood
 import app.psykit.core.model.PetState
@@ -90,7 +88,8 @@ fun GameDialog(
     var result by remember { mutableStateOf<Triple<Int, Int, Int>?>(null) }
     // In den Spielen immer dein Standardbild („Normal“) zeigen
     val sprite = remember(s.stage) { vm.sprites.load(s.stage, SpriteVariant.BASE) ?: sprite }
-    Dialog(onDismissRequest = onCancel, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
+    // Vollbild im App-Fenster statt eigenem Dialog-Fenster, damit unten nichts unter der Navigationsleiste verschwindet
+    FullScreenLayer(onBack = onCancel) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

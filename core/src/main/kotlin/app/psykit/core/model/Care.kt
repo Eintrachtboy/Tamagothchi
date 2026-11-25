@@ -28,8 +28,25 @@ enum class Food(val label: String, val emoji: String, val satiety: Float, val jo
 }
 
 /** Stellen zum Kraulen. Eine davon ist jeden Tag die geheime Lieblingsstelle. */
-enum class Zone(val label: String) {
-    HEAD("Kopf"), EARS("Ohren"), CHEEKS("Wangen"), CHIN("Kinn"), BELLY("Bauch"), TAIL("Schwanz");
+enum class Zone(val label: String, val row: Float, val side: Boolean) {
+    // row: grobe Höhe am Körper (0 = ganz oben), side: eher am Rand als in der Mitte
+    HEAD("Kopf", 0.5f, false), EARS("Ohren", 0f, true), CHEEKS("Wangen", 1f, true),
+    CHIN("Kinn", 1.5f, false), BELLY("Bauch", 2.5f, false), TAIL("Schwanz", 3.5f, true);
+
+    /** Richtungstipp von dieser Stelle zur gesuchten Stelle. */
+    fun hintTowards(target: Zone): String {
+        val dy = target.row - row
+        return when {
+            dy <= -1.5f -> "Viel weiter oben!"
+            dy < -0.5f -> "Etwas weiter oben."
+            dy >= 1.5f -> "Viel weiter unten!"
+            dy > 0.5f -> "Etwas weiter unten."
+            target.side && !side -> "Ganz nah dran! Eher seitlich."
+            !target.side && side -> "Ganz nah dran! Eher in der Mitte."
+            dy < 0f -> "Ganz nah dran! Ein kleines Stück höher."
+            else -> "Ganz nah dran! Ein kleines Stück tiefer."
+        }
+    }
 
     companion object {
         fun favoriteOn(epochDay: Long, seed: Long): Zone = entries[Random(seed xor (epochDay * 1_000_003L)).nextInt(entries.size)]

@@ -109,7 +109,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun harvest(i: Int) = act { s, now -> PetEngine.harvest(s, i, now, repo.zone) }
     fun claimQuest(q: Quest) = act { s, _ -> PetEngine.claimQuest(s, q) }
-    fun removePoop() = repo.update { s, _ -> PetEngine.removePoop(s) to Unit }
+    fun removePoop() = act { s, _ -> PetEngine.scoopPoop(s) }
     fun putToBed(hummed: Boolean) = act { s, now -> PetEngine.putToBed(s, now, repo.zone, hummed) }
     fun wake() = act { s, now -> PetEngine.wake(s, now, repo.zone) }
     fun redeemSteps() = act { s, _ -> PetEngine.redeemSteps(s) }

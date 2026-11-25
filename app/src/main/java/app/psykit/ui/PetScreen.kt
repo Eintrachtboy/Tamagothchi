@@ -84,6 +84,7 @@ import app.psykit.core.model.Food
 import app.psykit.core.model.GameKind
 import app.psykit.core.model.PetState
 import app.psykit.core.model.Stage
+import app.psykit.core.model.Zone
 import app.psykit.sprites.SpriteVariant
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -155,6 +156,8 @@ fun PetScreen(vm: PetViewModel) {
     // ---------- Streicheln ----------
     var handPos by remember { mutableStateOf<Offset?>(null) }
     var strokeHint by remember { mutableStateOf("") }
+    var scratchPos by remember { mutableStateOf<Offset?>(null) }
+    var scratchLabel by remember { mutableStateOf("") }
 
     // ---------- Putzen ----------
     var cleanSession by remember { mutableIntStateOf(0) }
@@ -213,10 +216,19 @@ fun PetScreen(vm: PetViewModel) {
     val sceneInteraction: Modifier = when (mode) {
         Mode.STROKE -> Modifier
             .pointerInput(Mode.STROKE) {
-                detectTapGestures(onLongPress = { p ->
-                    val z = zoneAt(p, size)
-                    if (z != null) vm.scratch(z) else vm.say("Halte den Finger direkt auf ${current.name}, um zu kraulen.")
-                })
+                detectTapGestures(
+                    onPress = { p ->
+                        // Schon beim Auflegen zeigen, welche Stelle unter dem Finger liegt
+                        scratchLabel = zoneAt(p, size)?.label ?: ""
+                        scratchPos = p
+                        tryAwaitRelease()
+                        scratchPos = null; scratchLabel = ""
+                    },
+                    onLongPress = { p ->
+                        val z = zoneAt(p, size)
+                        if (z != null) vm.scratch(z) else vm.say("Halte den Finger direkt auf ${current.name}, um zu kraulen.")
+                    },
+                )
             }
             .pointerInput("stroke") {
                 var dist = 0f
@@ -322,7 +334,13 @@ fun PetScreen(vm: PetViewModel) {
                 wear = Wearables.of(s, headPoint),
                 overlay = {
                     when (mode) {
-                        Mode.STROKE -> handPos?.let { p ->
+                        Mode.STROKE -> if (handPos == null) scratchPos?.let { p ->
+                            HandEmoji("🤏", p)
+                            if (scratchLabel.isNotEmpty()) Text(
+                                "Kraulen: $scratchLabel …", fontWeight = FontWeight.Bold, color = Color(0xFF5B3FA6),
+                                modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                            )
+                        } else handPos?.let { p ->
                             HandEmoji("✋", p)
                             if (strokeHint.isNotEmpty()) Text(
                                 strokeHint, fontWeight = FontWeight.Bold,
@@ -368,7 +386,8 @@ fun PetScreen(vm: PetViewModel) {
                             )
                             Mode.STROKE -> {
                                 Text("Streichle mit dem Finger über ${s.name}. Langsam beruhigt, zu schnell nervt.", style = MaterialTheme.typography.bodyMedium)
-                                Text("Finger gedrückt halten = kraulen. Irgendwo ist heute die geheime Lieblingsstelle …", style = MaterialTheme.typography.bodySmall)
+                                Text("Kraulen: Finger einen Moment ruhig auf eine Stelle halten. Eine davon ist heute die geheime Lieblingsstelle.", style = MaterialTheme.typography.bodySmall)
+                                ScratchSpots(s, vm.repo.zone)
                                 StatBar("🤝 Vertrauen", s.trust)
                             }
                             Mode.CLEAN -> {
@@ -663,6 +682,27 @@ private fun Header(s: PetState, onPets: () -> Unit, onInfo: () -> Unit, onSettin
         IconButton(onClick = onInfo) { Icon(Icons.Filled.Info, contentDescription = "Werte") }
         IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, contentDescription = "Einstellungen") }
     }
+}
+
+/** Die sechs Kraulstellen: heute schon probierte sind durchgestrichen, die gefundene hat einen Stern. */
+@Composable
+fun ScratchSpots(s: PetState, zone: java.time.ZoneId) {
+    val now = System.currentTimeMillis()
+    val today = PetEngine.epochDay(now, zone)
+    val found = s.scratchFoundDay == today
+    val tried = PetEngine.scratchTriedToday(s, now, zone)
+    val spots = Zone.entries.joinToString("  ·  ") { z ->
+        when {
+            found && z == Zone.favoriteOn(today, s.bornAt) -> "⭐ ${z.label}"
+            z in tried -> "✗ ${z.label}"
+            else -> z.label
+        }
+    }
+    Text(
+        if (found) "Lieblingsstelle für heute gefunden! $spots" else "Stellen: $spots",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable

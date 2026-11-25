@@ -255,19 +255,39 @@ object PetEngine {
         }
     }
 
+    /** Nach so vielen Fehlversuchen verrät das Tierchen die Lieblingsstelle. */
+    const val SCRATCH_REVEAL_AFTER = 3
+
+    /** Heute schon probierte Kraulstellen. */
+    fun scratchTriedToday(s: PetState, now: Long, tz: ZoneId): List<Zone> =
+        if (s.scratchTriedDay == epochDay(now, tz)) s.scratchTried else emptyList()
+
     /** Kraulen an einer Stelle. Jeden Tag gibt es eine geheime Lieblingsstelle. */
     fun scratch(s: PetState, zone: Zone, now: Long, tz: ZoneId): ActionResult {
         blocked(s)?.let { return it }
         val today = epochDay(now, tz)
         val favorite = Zone.favoriteOn(today, s.bornAt)
         if (s.scratchFoundDay == today) {
-            return ActionResult(clamp(s.copy(happiness = s.happiness + 2f)), "${s.name} genießt das Kraulen am ${zone.label}.", reaction = Reaction.HAPPY)
+            return ActionResult(clamp(s.copy(happiness = s.happiness + 2f)), "${s.name} genießt das Kraulen (${zone.label}).", reaction = Reaction.HAPPY)
         }
+        val tried = (scratchTriedToday(s, now, tz) + zone).distinct()
+        val st = s.copy(scratchTriedDay = today, scratchTried = tried)
         if (zone == favorite) {
-            val ns = kind(s, 5f).copy(happiness = s.happiness + 15f, scratchFoundDay = today)
-            return withExp(ns, 5, "Volltreffer! Heute liebt ${s.name} es, am ${zone.label} gekrault zu werden. Es macht einen Freudensprung!", Reaction.JUMP)
+            val ns = kind(st, 5f).copy(happiness = s.happiness + 15f, scratchFoundDay = today)
+            return withExp(ns, 5, "Volltreffer! Heute liebt ${s.name} es, an dieser Stelle gekrault zu werden (${zone.label}). Es macht einen Freudensprung!", Reaction.JUMP)
         }
-        return ActionResult(clamp(s.copy(happiness = s.happiness + 1f)), "Ganz nett … aber die Lieblingsstelle für heute ist woanders.", reaction = Reaction.HAPPY)
+        val misses = tried.count { it != favorite }
+        val hint = if (misses >= SCRATCH_REVEAL_AFTER) "Psst … heute ist es: ${favorite.label}!" else zone.hintTowards(favorite)
+        return ActionResult(clamp(st.copy(happiness = s.happiness + 1f)), "${zone.label}: ganz nett, aber nicht die Lieblingsstelle. $hint", reaction = Reaction.HAPPY)
+    }
+
+    /** Häufchen mit der Schaufel wegräumen, mit Rückmeldung zum Kompost. */
+    fun scoopPoop(s: PetState): ActionResult {
+        if (s.poops <= 0) return ActionResult(s, "Hier liegt nichts mehr.", false)
+        val ns = removePoop(s)
+        val msg = if (ns.fertilizer > s.fertilizer) "Ab in den Kompost! 3 Häufchen sind jetzt 1 Dünger für den Garten 🧪."
+        else "Ab in den Kompost (${ns.compost}/${GardenEngine.COMPOST_PER_FERTILIZER}). Bei ${GardenEngine.COMPOST_PER_FERTILIZER} gibt es Dünger."
+        return ActionResult(ns, msg)
     }
 
     // ---------------- Putzen ----------------

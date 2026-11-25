@@ -43,6 +43,30 @@ object Shop {
         return ActionResult(ns.copy(stardust = p.stardust - potion.price), "${potion.label} gekauft.")
     }
 
+    const val DRINK_PRICE = 50
+    const val DRINK_ENERGY = 40f
+    const val DRINKS_PER_DAY = 3
+
+    fun drinksLeft(p: PetState): Int = DRINKS_PER_DAY - if (p.energyDrinkDay == p.questDay) p.energyDrinksToday else 0
+
+    /** Energiedrink: sofort +40 Energie (weckt auch auf), höchstens 3 am Tag. */
+    fun drinkEnergy(p: PetState): ActionResult {
+        if (p.stage == app.psykit.core.model.Stage.EGG) return ActionResult(p, "Ein Ei trinkt noch nichts.", false)
+        if (p.energy >= 99f) return ActionResult(p, "${p.name} ist schon voller Energie.", false)
+        val left = drinksLeft(p)
+        if (left <= 0) return ActionResult(p, "Für heute reicht's mit Energiedrinks. Morgen wieder!", false)
+        if (p.stardust < DRINK_PRICE) return ActionResult(p, "Dafür fehlen noch ${DRINK_PRICE - p.stardust} ✨.", false)
+        val today = if (p.energyDrinkDay == p.questDay) p.energyDrinksToday else 0
+        val ns = p.copy(
+            stardust = p.stardust - DRINK_PRICE,
+            energy = (p.energy + DRINK_ENERGY).coerceAtMost(100f),
+            sleeping = false,
+            energyDrinkDay = p.questDay,
+            energyDrinksToday = today + 1,
+        )
+        return ActionResult(ns, "⚡ Zisch! ${p.name} ist hellwach: +${DRINK_ENERGY.toInt()} Energie.", reaction = Reaction.JUMP)
+    }
+
     fun buyKey(p: PetState): ActionResult {
         if (p.keys >= DungeonEngine.MAX_KEYS) return ActionResult(p, "Mehr als ${DungeonEngine.MAX_KEYS} Schlüssel passen nicht in den Beutel.", false)
         if (p.stardust < DungeonEngine.KEY_PRICE) return ActionResult(p, "Dafür fehlen noch ${DungeonEngine.KEY_PRICE - p.stardust} ✨.", false)

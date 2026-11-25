@@ -153,6 +153,10 @@ fun ShopDialog(vm: PetViewModel, s: PetState, onClose: () -> Unit) {
                             Button(onClick = { vm.buyPotion(p) }, enabled = s.stardust >= p.price) { Text("${p.price} ✨") }
                         }
                     }
+                    val left = Shop.drinksLeft(s)
+                    Entry("⚡ Energiedrink (heute noch $left)", "Sofort +${Shop.DRINK_ENERGY.toInt()} Energie, weckt dein Tierchen auf. Höchstens ${Shop.DRINKS_PER_DAY} pro Tag. Energie jetzt: ${s.energy.toInt()}") {
+                        Button(onClick = { vm.drinkEnergy() }, enabled = s.stardust >= Shop.DRINK_PRICE && left > 0 && s.energy < 99f && s.stage != app.psykit.core.model.Stage.EGG) { Text("${Shop.DRINK_PRICE} ✨") }
+                    }
                     Entry("🗝️ Schlüssel (hast ${s.keys}/${DungeonEngine.MAX_KEYS})", "Jeder Dungeon-Lauf braucht einen Schlüssel. Gratis: einer pro Tag und einer je ${DungeonEngine.KEY_STEPS} eingelöste Schritte.") {
                         Button(onClick = { vm.buyKey() }, enabled = s.stardust >= DungeonEngine.KEY_PRICE && s.keys < DungeonEngine.MAX_KEYS) { Text("${DungeonEngine.KEY_PRICE} ✨") }
                     }

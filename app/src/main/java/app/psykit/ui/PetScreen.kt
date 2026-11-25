@@ -156,7 +156,9 @@ fun PetScreen(vm: PetViewModel) {
 
     // ---------- Putzen ----------
     var cleanSession by remember { mutableIntStateOf(0) }
-    var shower by remember { mutableStateOf(false) }
+    // Putzwerkzeug: 0 = Schwamm, 1 = Dusche, 2 = Schaufel (nur sie räumt Häufchen weg)
+    var tool by remember { mutableIntStateOf(0) }
+    val shower = tool == 1
     var toolPos by remember { mutableStateOf<Offset?>(null) }
     val spotCount = remember(cleanSession) { PetEngine.dirtSpots(s) }
     val spots = remember(cleanSession) { dirtSpotPositions(spotCount, s.bornAt + cleanSession * 7919L) }
@@ -243,7 +245,7 @@ fun PetScreen(vm: PetViewModel) {
                     onDragCancel = { handPos = null; strokeHint = "" },
                 )
             }
-        Mode.CLEAN -> Modifier.pointerInput(cleanSession, shower) {
+        Mode.CLEAN -> Modifier.pointerInput(cleanSession, tool) {
             val radius = 46.dp.toPx()
             detectDragGestures(
                 onDragStart = { p -> toolPos = p },
@@ -256,11 +258,11 @@ fun PetScreen(vm: PetViewModel) {
                         if (cleaned[i]) return@forEachIndexed
                         val d = (Offset(n.x * w, n.y * h) - p).getDistance()
                         if (d < radius) {
-                            if (!shower) foam[i] = (foam[i] + amount.getDistance() / (radius * 5f)).coerceAtMost(1f)
-                            else if (foam[i] >= 1f) cleaned[i] = true
+                            if (tool == 0) foam[i] = (foam[i] + amount.getDistance() / (radius * 5f)).coerceAtMost(1f)
+                            else if (tool == 1 && foam[i] >= 1f) cleaned[i] = true
                         }
                     }
-                    if (shower) {
+                    if (tool == 2) {
                         for (i in 0 until current.poops) {
                             val n = poopPosition(i)
                             val now = System.currentTimeMillis()
@@ -320,7 +322,7 @@ fun PetScreen(vm: PetViewModel) {
                         }
                         Mode.CLEAN -> {
                             CleanOverlay(spots, foam, cleaned, cleanTick)
-                            toolPos?.let { p -> HandEmoji(if (shower) "🚿" else "🧽", p) }
+                            toolPos?.let { p -> HandEmoji(when (tool) { 1 -> "🚿"; 2 -> "🧹"; else -> "🧽" }, p) }
                         }
                         Mode.SLEEP -> Blanket(blanket)
                         Mode.GARDEN -> WateringOverlay(watering)
@@ -364,14 +366,16 @@ fun PetScreen(vm: PetViewModel) {
                                 Text(
                                     when {
                                         spotCount == 0 && s.poops == 0 -> "${s.name} ist schon sauber."
-                                        spotCount == 0 -> "Spül die Häufchen mit der Dusche weg."
-                                        else -> "Erst mit dem Schwamm einschäumen, bis Schaum entsteht, dann abduschen. Noch ${cleaned.count { !it }} von $spotCount Flecken."
+                                        spotCount == 0 -> "Räum die Häufchen mit der Schaufel weg: einfach drüberwischen."
+                                        else -> "Erst mit dem Schwamm einschäumen, bis Schaum entsteht, dann abduschen. Noch ${cleaned.count { !it }} von $spotCount Flecken." +
+                                            if (s.poops > 0) " Häufchen kommen mit der Schaufel weg." else ""
                                     },
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    FilterChip(selected = !shower, onClick = { shower = false }, label = { Text("🧽 Schwamm") })
-                                    FilterChip(selected = shower, onClick = { shower = true }, label = { Text("🚿 Dusche") })
+                                    FilterChip(selected = tool == 0, onClick = { tool = 0 }, label = { Text("🧽") })
+                                    FilterChip(selected = tool == 1, onClick = { tool = 1 }, label = { Text("🚿") })
+                                    FilterChip(selected = tool == 2, onClick = { tool = 2 }, label = { Text("🧹 Schaufel") })
                                     Spacer(Modifier.weight(1f))
                                     OutlinedButton(onClick = { finishCleaning(); cleanSession++ }) { Text("Fertig") }
                                 }

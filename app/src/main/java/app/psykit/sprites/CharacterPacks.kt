@@ -60,7 +60,17 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
     /** Schwebt die Figur (true) oder steht sie auf dem Boden (false)? Pro Tierchen. */
     var floating: Boolean
         get() = prefs.getBoolean("float_${store.petId}", true)
-        set(v) { prefs.edit().putBoolean("float_${store.petId}", v).apply() }
+        set(v) { prefs.edit().putBoolean("float_${store.petId}", v).commit() }
+
+    /** Schalter von Hand umgelegt: auch im aktiven Paket merken, damit es beim nächsten Wechsel so bleibt. */
+    fun setFloatingByUser(v: Boolean) {
+        floating = v
+        val id = activeId
+        if (id.isNullOrEmpty()) return
+        val f = File(File(root, id), "pack.json")
+        val m = runCatching { PackManifest.parse(f.readText()) }.getOrNull() ?: return
+        runCatching { f.writeText(m.copy(floating = v).toJson()) }
+    }
 
     /** Sitz von Hut und Brille auf eigenen Bildern ("x,y,size,eyes"), null = Standard. Pro Tierchen. */
     var headPoint: String?
@@ -225,7 +235,7 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
         if (files.isEmpty()) return null
         val dest = File(root, idFor(name)).apply { deleteRecursively(); mkdirs() }
         files.forEach { it.copyTo(File(dest, it.name), overwrite = true) }
-        File(dest, "pack.json").writeText(PackManifest(name = name, head = headPoint).toJson())
+        File(dest, "pack.json").writeText(PackManifest(name = name, head = headPoint, floating = floating).toJson())
         activeId = dest.name
         return info(dest)
     }
@@ -240,7 +250,7 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
         src.listFiles()?.filter { it.extension == "png" || it.extension == "anim" }?.forEach { it.copyTo(File(store.dir, it.name), overwrite = true) }
         store.clearCache()
         activeId = id
-        info.floating?.let { floating = it }
+        floating = info.floating ?: true
         headPoint = info.head
         return info
     }

@@ -116,6 +116,14 @@ fun sourceText(m: MoveId): String = when (val src = m.source) {
     is MoveSource.Shop -> "Im Laden für ${src.price} ✨"
     is MoveSource.Training -> "Ab ${src.needed} Training in ${src.stat.label}"
     is MoveSource.Drop -> "Fund: ${src.where}"
+    is MoveSource.Hidden -> "Versteckt im Dungeon (${app.psykit.core.dungeon.Floors.get(src.floor).let { "${it.code} ${it.name}" }})"
+}
+
+/** Stunden bis Mitternacht, dann gibt es ein neues Angebot. */
+private fun hoursToMidnight(zone: java.time.ZoneId): Long {
+    val now = java.time.ZonedDateTime.now(zone)
+    val next = now.toLocalDate().plusDays(1).atStartOfDay(zone)
+    return (java.time.Duration.between(now, next).toMinutes() + 59) / 60
 }
 
 // ------------------------------------------------------------ Laden
@@ -123,6 +131,8 @@ fun sourceText(m: MoveId): String = when (val src = m.source) {
 @Composable
 fun ShopDialog(vm: PetViewModel, s: PetState, onClose: () -> Unit) {
     var tab by remember { mutableStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshShop() }
+    val today = PetEngine.epochDay(System.currentTimeMillis(), vm.repo.zone)
     FullDialog("🛍️ Laden", s, onClose) {
         Tabs(listOf("⚔️ Attacken", "🧪 Tränke & Schlüssel", "🎩 Kosmetik", "🫐 Beeren verkaufen"), tab) { tab = it }
         Spacer(Modifier.height(8.dp))
@@ -131,16 +141,37 @@ fun ShopDialog(vm: PetViewModel, s: PetState, onClose: () -> Unit) {
             when (tab) {
                 0 -> {
                     val known = MoveId.known(s)
-                    Shop.moves.sortedBy { Shop.price(it) }.forEach { m ->
-                        val has = m in known
-                        Entry("${m.type?.emoji ?: "✳️"} ${m.label}", moveLine(m)) {
-                            if (has) Text("✓ kann es", style = MaterialTheme.typography.labelLarge)
-                            else Button(onClick = { vm.buyMove(m) }, enabled = s.stardust >= Shop.price(m)) { Text("${Shop.price(m)} ✨") }
+                    val h = hoursToMidnight(vm.repo.zone)
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                        Column(Modifier.padding(10.dp).fillMaxWidth()) {
+                            Text("📅 Heute im Angebot" + if (Shop.isHighlightDay(today)) " · 🌟 Montags-Highlight" else "", fontWeight = FontWeight.Bold)
+                            Text("Neues Angebot in ${if (h <= 1) "unter 1 Std." else "$h Std."} Jeden Tag liegen andere Attacken aus.", style = MaterialTheme.typography.bodySmall)
+                            val can = Shop.canReroll(s, today)
+                            TextButton(onClick = { vm.rerollShop() }, enabled = can && s.stardust >= Shop.REROLL_PRICE) {
+                                Text(if (can) "🎲 Neu würfeln (${Shop.REROLL_PRICE} ✨, einmal am Tag)" else "🎲 Heute schon neu gewürfelt")
+                            }
                         }
                     }
+                    val offer = Shop.offerMoves(s)
+                    if (offer.isEmpty()) Text("Heute ist alles ausverkauft. Dein Tierchen kann schon jede Laden-Attacke!", style = MaterialTheme.typography.bodyMedium)
+                    offer.forEachIndexed { i, m ->
+                        val has = m in known
+                        val deal = m.name == s.shopDeal
+                        val highlight = i == 0 && Shop.isHighlightDay(today) && Shop.price(m) >= Shop.HIGHLIGHT_PRICE
+                        val tag = (if (deal) "🏷️ Angebot −${Shop.DEAL_PCT} % · " else "") + (if (highlight) "🌟 Highlight · " else "")
+                        Entry("${m.type?.emoji ?: "✳️"} ${m.label}", tag + moveLine(m)) {
+                            if (has) Text("✓ kann es", style = MaterialTheme.typography.labelLarge)
+                            else Button(onClick = { vm.buyMove(m) }, enabled = s.stardust >= Shop.price(s, m)) {
+                                Text(if (deal) "${Shop.price(m)} → ${Shop.price(s, m)} ✨" else "${Shop.price(m)} ✨")
+                            }
+                        }
+                    }
+                    val later = Shop.moves.filter { it !in known && it !in offer }
+                    if (later.isNotEmpty()) Text("Kommen an anderen Tagen in den Laden: " + later.joinToString { it.label }, style = MaterialTheme.typography.bodySmall)
                     Text("Weitere Attacken lernt dein Tierchen durch Wachsen, Training und Funde im Dungeon:", style = MaterialTheme.typography.bodySmall)
                     MoveId.entries.filter { it.source !is MoveSource.Shop && it !in known }.forEach { m ->
-                        Entry("🔒 ${m.label}", sourceText(m) + " · " + moveLine(m)) {}
+                        if (m.source is MoveSource.Hidden) Entry("❔ ???", sourceText(m) + " · Nicht zu kaufen") {}
+                        else Entry("🔒 ${m.label}", sourceText(m) + " · " + moveLine(m)) {}
                     }
                 }
                 1 -> {
@@ -160,7 +191,10 @@ fun ShopDialog(vm: PetViewModel, s: PetState, onClose: () -> Unit) {
                     }
                 }
                 2 -> {
-                    Shop.items.sortedBy { it.price }.forEach { i ->
+                    Text("Jeden Tag ${Shop.OFFER_ITEMS} andere Teile.", style = MaterialTheme.typography.bodySmall)
+                    val goods = Shop.offerItems(s)
+                    if (goods.isEmpty()) Text("Heute nichts Neues: Du hast schon alles aus dem Laden.", style = MaterialTheme.typography.bodyMedium)
+                    goods.sortedBy { it.price }.forEach { i ->
                         val has = i.name in s.items
                         Entry("${i.emoji} ${i.label}", "${i.slot.label} · ${i.rarity.label} · ${i.bonusText}") {
                             if (has) Text("✓ hast du", style = MaterialTheme.typography.labelLarge)
@@ -209,7 +243,7 @@ fun CollectionDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: ()
             wear = Wearables.of(s, headPoint),
         )
         Spacer(Modifier.height(6.dp))
-        Tabs(listOf("🎩 Anziehen", "🏠 Deko", "⚔️ Attacken", "📐 Sitz"), tab) { tab = it }
+        Tabs(listOf("🎩 Anziehen", "🏠 Deko", "⚔️ Attacken", "✨ Kombos", "📐 Sitz"), tab) { tab = it }
         Spacer(Modifier.height(8.dp))
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             MessageLine(vm)
@@ -217,6 +251,7 @@ fun CollectionDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: ()
                 0 -> WearTab(vm, s)
                 1 -> DecoTab(vm, s)
                 2 -> MovesEditor(s) { vm.setMoves(it); vm.say("Attacken gespeichert.") }
+                3 -> ComboTab(s)
                 else -> FitTab(vm, headPoint, custom = sprite != null)
             }
             Spacer(Modifier.height(12.dp))
@@ -275,6 +310,23 @@ private fun ItemRow(vm: PetViewModel, s: PetState, i: Item) {
                 TextButton(onClick = { vm.setCharm(if (charm) null else i) }) { Text(if (charm) "Kein Glücksbringer" else "Als Glücksbringer") }
             }
         }
+    }
+}
+
+@Composable
+private fun ComboTab(s: PetState) {
+    val found = app.psykit.core.battle.Combo.entries.count { it.name in s.combosFound }
+    Text("Kombos ($found/${app.psykit.core.battle.Combo.entries.size})", fontWeight = FontWeight.Bold)
+    Text("Manche Zustände und Attackentypen wirken zusammen besonders stark. Eine Kombo erscheint hier, sobald dein Tierchen sie zum ersten Mal auslöst. Im Kampf leuchtet sie golden auf der Attacke.", style = MaterialTheme.typography.bodySmall)
+    app.psykit.core.battle.Combo.entries.forEach { c ->
+        if (c.name in s.combosFound) Entry("✨ ${c.label}", c.info) {}
+        else Entry("❔ ???", "Noch nicht entdeckt") {}
+    }
+    val hidden = MoveId.entries.filter { it.source is MoveSource.Hidden }
+    Text("Versteckte Attacken (${hidden.count { it.name in s.ownedMoves }}/${hidden.size})", fontWeight = FontWeight.Bold)
+    hidden.forEach { m ->
+        if (m.name in s.ownedMoves) Entry("${m.type?.emoji ?: "✳️"} ${m.label}", sourceText(m) + " · " + moveLine(m)) {}
+        else Entry("❔ ???", sourceText(m)) {}
     }
 }
 

@@ -207,8 +207,14 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     fun leaveDungeon() = act { s, _ -> DungeonEngine.leave(s) }
     fun clearLastRun() = repo.update { s, _ -> s.copy(lastRun = null) to Unit }
 
-    fun buyMove(m: MoveId) = act { s, _ -> Shop.buyMove(s, m) }
-    fun buyItem(i: Item) = act { s, _ -> Shop.buyItem(s, i) }
+    fun chooseCard(i: Int) = act { s, _ -> DungeonEngine.chooseCard(s, i) }
+
+    private fun shopDay(now: Long) = PetEngine.epochDay(now, repo.zone)
+    /** Tagesangebot des Ladens erneuern, wenn ein neuer Tag begonnen hat. */
+    fun refreshShop() = repo.update { s, now -> Shop.refresh(s, shopDay(now)) to Unit }
+    fun rerollShop() = act { s, now -> Shop.reroll(Shop.refresh(s, shopDay(now)), shopDay(now)) }
+    fun buyMove(m: MoveId) = act { s, now -> Shop.buyMove(Shop.refresh(s, shopDay(now)), m) }
+    fun buyItem(i: Item) = act { s, now -> Shop.buyItem(Shop.refresh(s, shopDay(now)), i) }
     fun buyPotion(p: Potion) = act { s, _ -> Shop.buyPotion(s, p) }
     fun buyKey() = act { s, _ -> Shop.buyKey(s) }
     fun drinkEnergy() = act { s, _ -> Shop.drinkEnergy(s) }

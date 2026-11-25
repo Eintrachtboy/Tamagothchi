@@ -37,8 +37,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import app.psykit.core.battle.MoveId
 import app.psykit.core.battle.MoveSource
 import app.psykit.core.battle.Potion
@@ -69,7 +67,7 @@ fun ShopPanel(s: PetState, onShop: () -> Unit, onBook: () -> Unit) {
 
 @Composable
 private fun FullDialog(title: String, s: PetState, onClose: () -> Unit, content: @Composable () -> Unit) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    FullScreenLayer(onBack = onClose) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

@@ -69,7 +69,7 @@ fun ShopPanel(s: PetState, onShop: () -> Unit, onBook: () -> Unit) {
 
 @Composable
 private fun FullDialog(title: String, s: PetState, onClose: () -> Unit, content: @Composable () -> Unit) {
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

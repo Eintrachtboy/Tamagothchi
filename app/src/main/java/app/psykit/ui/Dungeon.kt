@@ -89,7 +89,7 @@ fun DungeonPanel(s: PetState, onOpen: () -> Unit) {
 @Composable
 fun DungeonDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () -> Unit) {
     LaunchedEffect(Unit) { vm.say("") }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false)) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp)) {
                 val run = s.run
@@ -384,24 +384,29 @@ private fun BattleView(vm: PetViewModel, s: PetState, st: BattleState, sprite: S
     LaunchedEffect(alive.map { it.id }) { if (alive.none { it.id == target }) target = alive.firstOrNull { it.front }?.id ?: alive.firstOrNull()?.id ?: -1 }
     val selected = alive.firstOrNull { it.id == target }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // Gegner: hinten oben, vorne darunter
-        val back = alive.filter { !it.front }
-        val front = alive.filter { it.front }
-        if (back.isNotEmpty()) EnemyRow(back, st, target, "hinten") { target = it }
-        if (front.isNotEmpty()) EnemyRow(front, st, target, "vorne") { target = it }
-        if (st.icicleWarning) Text("⚠️ Über dir knackt die Decke!", color = Color(0xFFE5484D), fontWeight = FontWeight.Bold)
+        // Oberer Teil scrollt, damit Attacken unten immer sichtbar bleiben
+        Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Gegner: hinten oben, vorne darunter
+            val back = alive.filter { !it.front }
+            val front = alive.filter { it.front }
+            if (back.isNotEmpty()) EnemyRow(back, st, target, "hinten") { target = it }
+            if (front.isNotEmpty()) EnemyRow(front, st, target, "vorne") { target = it }
+            if (st.icicleWarning) Text("⚠️ Über dir knackt die Decke!", color = Color(0xFFE5484D), fontWeight = FontWeight.Bold)
 
-        // Kampfbericht
-        Card(Modifier.fillMaxWidth().weight(1f), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-            Column(Modifier.padding(10.dp).verticalScroll(rememberScrollState())) {
-                Text("Runde ${st.round}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                st.log.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            // Kampfbericht: feste Höhe, springt ans Ende
+            val logScroll = rememberScrollState()
+            LaunchedEffect(st.log.size, st.round) { logScroll.scrollTo(logScroll.maxValue) }
+            Card(Modifier.fillMaxWidth().height(120.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                Column(Modifier.padding(10.dp).verticalScroll(logScroll)) {
+                    Text("Runde ${st.round}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    st.log.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+                }
             }
         }
 
         // Tierchen
         Row(verticalAlignment = Alignment.CenterVertically) {
-            PetIcon(sprite, s.stage, if (st.pet.hpPct() < 0.3f) Mood.SAD else Mood.HAPPY, 64.dp)
+            PetIcon(sprite, s.stage, if (st.pet.hpPct() < 0.3f) Mood.SAD else Mood.HAPPY, 48.dp)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
                 Text(st.pet.name + "  " + st.pet.status.keys.joinToString(" ") { it.emoji }, fontWeight = FontWeight.Bold)
@@ -420,7 +425,7 @@ private fun BattleView(vm: PetViewModel, s: PetState, st: BattleState, sprite: S
                     FilledTonalButton(
                         onClick = { vm.battle(PetAction(m, if (reach) target else null)) },
                         enabled = ok,
-                        modifier = Modifier.weight(1f).heightIn(min = 64.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 56.dp),
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp),
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {

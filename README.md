@@ -15,7 +15,7 @@ Neue Versionen einfach über die alte installieren, der Spielstand bleibt erhalt
 | Funktion | Wirkung |
 |---|---|
 | Füttern | Essen aus der Leiste in den Mund ziehen. Jedes Tierchen hat 2 geheime Lieblingsessen (❤️) und 1, das es ausspuckt (👎). Mehr als 3 Süßigkeiten in 2 Stunden machen träge |
-| Streicheln | Mit dem Finger über das Tierchen wischen: langsam beruhigt, zu schnell nervt. Je mehr Vertrauen, desto mehr Kuscheln am Stück. Finger gedrückt halten = kraulen; jeden Tag ist eine andere Körperstelle die geheime Lieblingsstelle (Freudensprung + Vertrauensbonus) |
+| Streicheln | Mit dem Finger über das Tierchen wischen: langsam beruhigt, zu schnell nervt. Je mehr Vertrauen, desto mehr Kuscheln am Stück. Finger gedrückt halten = kraulen; jeden Tag ist eine andere Körperstelle (Kopf, Ohren, Wangen, Kinn, Bauch, Schwanz) die geheime Lieblingsstelle (Freudensprung + Vertrauensbonus). Beim Drücken steht oben, welche Stelle unter dem Finger liegt; Fehlversuche geben einen Richtungstipp, nach 3 Fehlversuchen wird die Stelle verraten |
 | Putzen | Mit dem Schwamm Flecken einschäumen, dann mit der Dusche abspülen. Nicht eingeschäumte Stellen werden nicht sauber. Häufchen mit der Dusche wegspülen. Nach Spaziergängen (alle 1500 Schritte) gibt es neue Schmutzflecken |
 | Schlafen / Wecken | Decke von unten hochziehen und Licht mit dem Regler dimmen. Optional ein Schlaflied ins Mikrofon summen, dann schläft es sofort ein. Nachts wecken macht grummelig |
 | Spielen | Freie Auswahl: „Wo steckt es?“ (3 Wolken mischen sich), Psi-Memory, Seifenblasen, Psi-Reaktion, Echo (Farbfolge), Schattenraten, Futter-Koch, Wolkenhüpfen, Besuch (2 Tierchen spielen zusammen). Gute Ergebnisse trainieren Kampfwerte |

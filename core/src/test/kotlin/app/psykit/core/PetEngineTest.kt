@@ -6,6 +6,7 @@ import app.psykit.core.engine.PetEngine
 import app.psykit.core.model.Food
 import app.psykit.core.model.GameKind
 import app.psykit.core.model.Mood
+import app.psykit.core.model.Quest
 import app.psykit.core.model.Reaction
 import app.psykit.core.model.Zone
 import app.psykit.core.model.PetState
@@ -99,6 +100,33 @@ class PetEngineTest {
         assertTrue(r.state.trust > s.trust)
         // zweites Mal am selben Tag kein Bonus mehr
         assertEquals(Reaction.HAPPY, PetEngine.scratch(r.state, fav, at(13), zone).reaction)
+    }
+
+    @Test fun scratchMissesGiveHintsAndRevealAfterThree() {
+        var s = hatched(at(10))
+        val day = PetEngine.epochDay(at(12), zone)
+        val fav = Zone.favoriteOn(day, s.bornAt)
+        val wrong = Zone.entries.filter { it != fav }
+        s = PetEngine.advance(s, at(12), zone)
+        val first = PetEngine.scratch(s, wrong[0], at(12), zone)
+        assertEquals(listOf(wrong[0]), first.state.scratchTried)
+        assertTrue(first.message.contains(wrong[0].hintTowards(fav)))
+        var st = first.state
+        for (z in wrong.take(3).drop(1)) st = PetEngine.scratch(st, z, at(12), zone).state
+        val third = PetEngine.scratch(st, wrong[2], at(12), zone)
+        assertTrue(third.message.contains("heute ist es: ${fav.label}"))
+        // Treffer zählt für die Tagesaufgabe, falls sie heute dran ist
+        val hit = PetEngine.track(PetEngine.scratch(third.state, fav, at(12), zone), Quest.SCRATCH)
+        assertEquals(Reaction.JUMP, hit.reaction)
+        if (Quest.SCRATCH in PetEngine.quests(hit.state)) assertTrue(PetEngine.questDone(hit.state, Quest.SCRATCH))
+        // am nächsten Tag ist die Liste wieder leer
+        assertTrue(PetEngine.scratchTriedToday(hit.state, at(12, day = 2), zone).isEmpty())
+    }
+
+    @Test fun hintsPointTheRightWay() {
+        assertEquals("Viel weiter unten!", Zone.EARS.hintTowards(Zone.TAIL))
+        assertEquals("Viel weiter oben!", Zone.BELLY.hintTowards(Zone.HEAD))
+        assertEquals("Ganz nah dran! Eher seitlich.", Zone.HEAD.hintTowards(Zone.EARS))
     }
 
     @Test fun walksMakeDirtyAndCleaningHelps() {

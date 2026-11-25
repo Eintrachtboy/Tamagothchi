@@ -47,6 +47,9 @@ data class PetState(
     val sluggishUntil: Long = 0,
     // Kraulstelle: Tag (epochDay), an dem sie gefunden wurde
     val scratchFoundDay: Long = -1,
+    // Heute schon probierte Kraulstellen (für Hinweise und die Anzeige)
+    val scratchTriedDay: Long = -1,
+    val scratchTried: List<Zone> = emptyList(),
     // Schmutz durch Spaziergänge
     val walkSteps: Long = 0,
     val dirt: Int = 0,

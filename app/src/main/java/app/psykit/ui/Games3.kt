@@ -61,13 +61,17 @@ import kotlin.random.Random
 
 private data class Recipe(val name: String, val dish: String, val items: Set<String>)
 
-private val INGREDIENTS = listOf("🫐", "🥛", "🌾", "🐟", "🍚", "🥬", "🍄", "🥕", "💧", "🍎", "🍯", "🥚")
+private val INGREDIENTS = listOf("🫐", "🥛", "🌾", "🐟", "🍚", "🥬", "🍄", "🥕", "💧", "🍎", "🍯", "🥚", "⭐", "💜")
 private val INGREDIENT_NAMES = mapOf(
     "🫐" to "Beeren", "🥛" to "Milch", "🌾" to "Mehl", "🐟" to "Fisch", "🍚" to "Reis", "🥬" to "Salat",
     "🍄" to "Pilz", "🥕" to "Karotte", "💧" to "Wasser", "🍎" to "Apfel", "🍯" to "Honig", "🥚" to "Ei",
+    "⭐" to "Sternbeere", "💜" to "Psi-Beere",
 )
 private val RECIPES = listOf(
     Recipe("Beerenkuchen", "🍰", setOf("🫐", "🥛", "🌾")),
+    Recipe("Sternen-Joghurt", "🍨", setOf("⭐", "🥛", "🍯")),
+    Recipe("Psi-Pudding", "🍮", setOf("💜", "🥛", "🥚")),
+    Recipe("Garten-Torte", "🎂", setOf("⭐", "💜", "🌾", "🥚")),
     Recipe("Fisch mit Reis", "🍱", setOf("🐟", "🍚", "🥬")),
     Recipe("Pilzsuppe", "🍲", setOf("🍄", "🥕", "💧")),
     Recipe("Apfelmus", "🥣", setOf("🍎", "🍯", "💧")),

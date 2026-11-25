@@ -43,7 +43,9 @@ import app.psykit.core.battle.Potion
 import app.psykit.core.dungeon.DungeonEngine
 import app.psykit.core.dungeon.Shop
 import app.psykit.core.dungeon.World
+import app.psykit.core.engine.GardenEngine
 import app.psykit.core.engine.PetEngine
+import app.psykit.core.model.Berry
 import app.psykit.core.model.Item
 import app.psykit.core.model.PetState
 import app.psykit.core.model.Slot
@@ -134,7 +136,7 @@ fun ShopDialog(vm: PetViewModel, s: PetState, onClose: () -> Unit) {
     androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshShop() }
     val today = PetEngine.epochDay(System.currentTimeMillis(), vm.repo.zone)
     FullDialog("🛍️ Laden", s, onClose) {
-        Tabs(listOf("⚔️ Attacken", "🧪 Tränke & Schlüssel", "🎩 Kosmetik", "🫐 Beeren verkaufen"), tab) { tab = it }
+        Tabs(listOf("⚔️ Attacken", "🧪 Tränke & Schlüssel", "🎩 Kosmetik", "🫐 Garten"), tab) { tab = it }
         Spacer(Modifier.height(8.dp))
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             MessageLine(vm)
@@ -204,14 +206,29 @@ fun ShopDialog(vm: PetViewModel, s: PetState, onClose: () -> Unit) {
                     Text("Die schönsten Teile gibt es nur im Dungeon: in Truhen und bei den Bossen.", style = MaterialTheme.typography.bodySmall)
                 }
                 else -> {
-                    Text("Gartenbeeren bringen je ${PetEngine.BERRY_PRICE} ✨. Du hast ${s.berryStock}.", style = MaterialTheme.typography.bodyMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(1, 5, 10).forEach { n ->
-                            OutlinedButton(onClick = { vm.sellBerries(n) }, enabled = s.berryStock >= n) { Text("$n verkaufen") }
+                    Text("Beeren verkaufen", fontWeight = FontWeight.Bold)
+                    Berry.values().forEach { b ->
+                        val have = GardenEngine.count(s, b)
+                        Entry("${b.emoji} ${b.label}", "je ${b.sellPrice} ✨ · du hast $have") {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedButton(onClick = { vm.sellBerry(b, 1) }, enabled = have >= 1) { Text("1") }
+                                Button(onClick = { vm.sellBerry(b, have) }, enabled = have > 0) { Text("Alle") }
+                            }
                         }
-                        Button(onClick = { vm.sellBerries(s.berryStock) }, enabled = s.berryStock > 0) { Text("Alle") }
                     }
-                    Text("Beeren, die du behältst, kann dein Tierchen weiter essen.", style = MaterialTheme.typography.bodySmall)
+                    Entry("🧪 Psi-Trank brauen", "2 Psi-Beeren werden zu einem Psi-Trank (du hast ${s.psiBerries})") {
+                        Button(onClick = { vm.brewPsiPotion() }, enabled = s.psiBerries >= 2) { Text("Brauen") }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text("Gießkanne", fontWeight = FontWeight.Bold)
+                    val k = s.canLevel
+                    if (k > 0) Text("Du hast: ${GardenEngine.CAN_NAMES[k - 1]}", style = MaterialTheme.typography.bodyMedium)
+                    if (k < GardenEngine.CAN_NAMES.size) {
+                        Entry("🚿 ${GardenEngine.CAN_NAMES[k]}", GardenEngine.CAN_TEXTS[k]) {
+                            Button(onClick = { vm.buyCan() }, enabled = s.stardust >= GardenEngine.CAN_PRICES[k]) { Text("${GardenEngine.CAN_PRICES[k]} ✨") }
+                        }
+                    } else Text("Das ist schon die beste Gießkanne.", style = MaterialTheme.typography.bodySmall)
+                    Text("Beeren, die du behältst, kann dein Tierchen essen oder im Smoothie-Mixer verwenden.", style = MaterialTheme.typography.bodySmall)
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -243,7 +260,7 @@ fun CollectionDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: ()
             wear = Wearables.of(s, headPoint),
         )
         Spacer(Modifier.height(6.dp))
-        Tabs(listOf("🎩 Anziehen", "🏠 Deko", "⚔️ Attacken", "✨ Kombos", "📐 Sitz"), tab) { tab = it }
+        Tabs(listOf("🎩 Anziehen", "🏠 Deko", "⚔️ Attacken", "✨ Kombos", "🌱 Garten", "📐 Sitz"), tab) { tab = it }
         Spacer(Modifier.height(8.dp))
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             MessageLine(vm)
@@ -252,6 +269,7 @@ fun CollectionDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: ()
                 1 -> DecoTab(vm, s)
                 2 -> MovesEditor(s) { vm.setMoves(it); vm.say("Attacken gespeichert.") }
                 3 -> ComboTab(s)
+                4 -> GardenBookTab(s)
                 else -> FitTab(vm, headPoint, custom = sprite != null)
             }
             Spacer(Modifier.height(12.dp))

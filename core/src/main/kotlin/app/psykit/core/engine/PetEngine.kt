@@ -80,6 +80,7 @@ object PetEngine {
             st = tick(st, dt / 60_000f, t, zone)
         }
         st = st.copy(lastUpdate = now)
+        st = GardenEngine.refresh(st, now, zone)
         // Mindestalter erreicht? Dann jetzt entwickeln
         val grown = Stage.next(st.stage, st.level, (now - st.bornAt) / 86_400_000L)
         if (grown != st.stage) st = st.copy(stage = grown)
@@ -161,7 +162,7 @@ object PetEngine {
         dirt = s.dirt.coerceIn(0, MAX_DIRT),
     )
 
-    private fun withExp(s: PetState, exp: Int, message: String, reaction: Reaction = Reaction.HAPPY): ActionResult {
+    internal fun withExp(s: PetState, exp: Int, message: String, reaction: Reaction = Reaction.HAPPY): ActionResult {
         val (ns, events) = LevelSystem.addExp(clamp(s), exp)
         return ActionResult(ns, (listOf(message) + events).joinToString(" "), reaction = reaction)
     }
@@ -291,7 +292,8 @@ object PetEngine {
         }
     }
 
-    fun removePoop(s: PetState): PetState = if (s.poops > 0) s.copy(poops = s.poops - 1) else s
+    /** Häufchen mit der Schaufel wegräumen: landet im Kompost (3 = 1 Dünger). */
+    fun removePoop(s: PetState): PetState = if (s.poops > 0) GardenEngine.addCompost(s.copy(poops = s.poops - 1)) else s
 
     // ---------------- Schlafen ----------------
 
@@ -380,60 +382,14 @@ object PetEngine {
 
     // ---------------- Garten ----------------
 
-    fun plotStage(p: Plot, now: Long, tz: ZoneId): PlotStage {
-        if (p.plantedAt == 0L) return PlotStage.EMPTY
-        val today = epochDay(now, tz)
-        val lastCare = if (p.lastWateredDay >= 0) p.lastWateredDay else epochDay(p.plantedAt, tz)
-        return when {
-            p.waterDays >= GARDEN_DAYS -> PlotStage.RIPE
-            today - lastCare >= 3 -> PlotStage.WITHERED
-            p.waterDays == 0 -> PlotStage.SEED
-            p.waterDays == 1 -> PlotStage.SPROUT
-            else -> PlotStage.BUSH
-        }
-    }
+    fun plotStage(p: Plot, now: Long, tz: ZoneId): PlotStage = GardenEngine.stage(p, now)
 
-    private fun withPlot(s: PetState, i: Int, p: Plot): PetState {
-        val plots = (s.plots + List(maxOf(0, 3 - s.plots.size)) { Plot() }).toMutableList()
-        plots[i] = p
-        return s.copy(plots = plots)
-    }
+    fun plant(s: PetState, i: Int, now: Long, tz: ZoneId, berry: app.psykit.core.model.Berry = app.psykit.core.model.Berry.BLUE): ActionResult =
+        GardenEngine.plant(GardenEngine.refresh(s, now, tz), i, berry, now)
 
-    fun plant(s: PetState, i: Int, now: Long, tz: ZoneId): ActionResult {
-        val p = s.plots.getOrElse(i) { Plot() }
-        val st = plotStage(p, now, tz)
-        if (st != PlotStage.EMPTY && st != PlotStage.WITHERED) return ActionResult(s, "Hier wächst schon etwas.", false)
-        return ActionResult(withPlot(s, i, Plot(plantedAt = now)), "Beerensamen gesät! Gieße ihn an $GARDEN_DAYS Tagen, dann kannst du ernten.", reaction = Reaction.HAPPY)
-    }
+    fun water(s: PetState, i: Int, now: Long, tz: ZoneId): ActionResult = GardenEngine.water(GardenEngine.refresh(s, now, tz), i, now)
 
-    /** Gemeinsam mit dem Tierchen gießen: einmal pro Tag und Beet. */
-    fun water(s: PetState, i: Int, now: Long, tz: ZoneId): ActionResult {
-        if (s.stage == Stage.EGG) return blocked(s)!!
-        if (s.sleeping) return ActionResult(s, "${s.name} schläft. Gießen macht ihr zusammen, wenn es wach ist.", false, Reaction.SLEEPY)
-        val p = s.plots.getOrElse(i) { Plot() }
-        val today = epochDay(now, tz)
-        return when (plotStage(p, now, tz)) {
-            PlotStage.EMPTY -> ActionResult(s, "Erst etwas pflanzen.", false)
-            PlotStage.WITHERED -> ActionResult(s, "Zu spät, die Pflanze ist vertrocknet. Pflanz neu!", false)
-            PlotStage.RIPE -> ActionResult(s, "Die Beeren sind reif. Ernten!", false)
-            else -> if (p.lastWateredDay == today) ActionResult(s, "Dieses Beet hat heute schon Wasser bekommen.", false)
-            else {
-                val lucky = kotlin.random.Random(now).nextInt(100) < Item.sum<Effect.GardenGrowth>(s) { it.pct }
-                val np = p.copy(lastWateredDay = today, waterDays = (p.waterDays + if (lucky) 2 else 1).coerceAtMost(GARDEN_DAYS))
-                var ns = kind(withPlot(s, i, np), 0.5f).copy(happiness = s.happiness + 4f, energy = s.energy - 2f)
-                ns = progress(ns, Quest.WATER)
-                val msg = if (np.waterDays >= GARDEN_DAYS) "${s.name} hilft fleißig mit der Gießkanne. Die Beeren sind reif!" else "${s.name} gießt mit dir zusammen. Es wächst! (${np.waterDays}/$GARDEN_DAYS)"
-                withExp(ns, 2, msg, Reaction.HAPPY)
-            }
-        }
-    }
-
-    fun harvest(s: PetState, i: Int, now: Long, tz: ZoneId): ActionResult {
-        val p = s.plots.getOrElse(i) { Plot() }
-        if (plotStage(p, now, tz) != PlotStage.RIPE) return ActionResult(s, "Noch nicht reif.", false)
-        val ns = progress(withPlot(s, i, Plot()).copy(berryStock = s.berryStock + HARVEST_BERRIES, happiness = s.happiness + 5f), Quest.HARVEST)
-        return withExp(ns, 5, "Ernte! $HARVEST_BERRIES Gartenbeeren. Du findest sie beim Füttern.", Reaction.JUMP)
-    }
+    fun harvest(s: PetState, i: Int, now: Long, tz: ZoneId): ActionResult = GardenEngine.harvest(GardenEngine.refresh(s, now, tz), i, now)
 
     // ---------------- Tagesaufgaben ----------------
 

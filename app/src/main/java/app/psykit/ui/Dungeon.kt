@@ -301,7 +301,7 @@ private fun EventView(vm: PetViewModel, s: PetState, run: DungeonRun) {
         Text("❓", fontSize = 56.sp)
         Text(ev.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
         Text(ev.text, textAlign = TextAlign.Center)
-        if (ev.name == "HEDGEHOG") Text("Gartenbeeren dabei: ${s.berryStock}", style = MaterialTheme.typography.bodySmall)
+        if (ev.name == "HEDGEHOG") Text("Beeren dabei: 🫐 ${s.berryStock} · ⭐ ${s.starBerries} · 💜 ${s.psiBerries} · 🌟 ${s.goldBerries}" + if (s.goldBerries > 0) "\nEine Goldbeere tauscht der Igel gegen einen Schlüssel." else "", style = MaterialTheme.typography.bodySmall, textAlign = TextAlign.Center)
         Button(onClick = { vm.resolveEvent(true) }, modifier = Modifier.fillMaxWidth()) { Text(ev.yes) }
         OutlinedButton(onClick = { vm.resolveEvent(false) }, modifier = Modifier.fillMaxWidth()) { Text(ev.no) }
     }

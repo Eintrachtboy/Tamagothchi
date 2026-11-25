@@ -55,7 +55,7 @@ import kotlin.math.sin
 import kotlin.random.Random
 import kotlinx.coroutines.launch
 
-private fun skyColors(phase: DayPhase) = when (phase) {
+internal fun skyColors(phase: DayPhase) = when (phase) {
     DayPhase.MORNING -> listOf(Color(0xFFFFD9C2), Color(0xFFFFF1E6))
     DayPhase.DAY -> listOf(Color(0xFFA9DDFB), Color(0xFFE9F7FF))
     DayPhase.EVENING -> listOf(Color(0xFFB98BD9), Color(0xFFFFC4B0))

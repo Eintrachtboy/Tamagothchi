@@ -13,6 +13,7 @@ import app.psykit.core.engine.ActionResult
 import app.psykit.core.model.Item
 import app.psykit.core.model.Slot
 import app.psykit.core.engine.PetEngine
+import app.psykit.core.engine.GardenEngine
 import app.psykit.core.model.Food
 import app.psykit.core.model.GameKind
 import app.psykit.core.model.PetState
@@ -91,11 +92,20 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     // Garten & Tagesaufgaben
     private val _watering = MutableStateFlow(0)
     val watering: StateFlow<Int> = _watering
-    fun plant(i: Int) = act { s, now -> PetEngine.plant(s, i, now, repo.zone) }
+    fun plant(i: Int, berry: app.psykit.core.model.Berry = app.psykit.core.model.Berry.BLUE) = act { s, now -> PetEngine.plant(s, i, now, repo.zone, berry) }
+    private fun garden(block: (PetState, Long) -> ActionResult) = act { s, now -> block(GardenEngine.refresh(s, now, repo.zone), now) }
+    fun weed(i: Int) = garden { s, _ -> GardenEngine.weed(s, i) }
+    fun removeSnail(i: Int) = garden { s, _ -> GardenEngine.removeSnail(s, i) }
+    fun fertilize(i: Int) = garden { s, now -> GardenEngine.fertilize(s, i, now) }
+    fun unlockBed() = garden { s, _ -> GardenEngine.unlockBed(s) }
+    fun buyCan() = act { s, _ -> GardenEngine.buyCan(s) }
+    fun mix(blue: Int, star: Int, psi: Int, gold: Int) = act { s, _ -> GardenEngine.mix(s, blue, star, psi, gold) }
+    fun eatBerry(b: app.psykit.core.model.Berry) = act { s, _ -> GardenEngine.eat(s, b) }
+    fun sellBerry(b: app.psykit.core.model.Berry, n: Int) = act { s, _ -> GardenEngine.sell(s, b, n) }
+    fun brewPsiPotion() = act { s, _ -> GardenEngine.brewPsiPotion(s) }
     fun water(i: Int) {
-        val before = state.value.plots.getOrNull(i)?.waterDays ?: 0
         act { s, now -> PetEngine.water(s, i, now, repo.zone) }
-        if ((state.value.plots.getOrNull(i)?.waterDays ?: 0) > before) _watering.value++
+        _watering.value++
     }
     fun harvest(i: Int) = act { s, now -> PetEngine.harvest(s, i, now, repo.zone) }
     fun claimQuest(q: Quest) = act { s, _ -> PetEngine.claimQuest(s, q) }

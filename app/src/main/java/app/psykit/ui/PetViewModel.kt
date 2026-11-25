@@ -109,7 +109,17 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     }
     fun harvest(i: Int) = act { s, now -> PetEngine.harvest(s, i, now, repo.zone) }
     fun claimQuest(q: Quest) = act { s, _ -> PetEngine.claimQuest(s, q) }
-    fun removePoop() = repo.update { s, _ -> PetEngine.removePoop(s) to Unit }
+    fun removePoop() {
+        val msg = repo.update { s, _ ->
+            val ns = PetEngine.removePoop(s)
+            ns to when {
+                ns === s -> ""
+                ns.fertilizer > s.fertilizer -> "Häufchen weg! Der Kompost ist voll: +1 Dünger 🧪 (du hast ${ns.fertilizer})."
+                else -> "Häufchen weg! Kompost ${ns.compost}/${GardenEngine.COMPOST_PER_FERTILIZER}, dann gibt es Dünger."
+            }
+        }
+        if (msg.isNotEmpty()) _message.value = msg
+    }
     fun putToBed(hummed: Boolean) = act { s, now -> PetEngine.putToBed(s, now, repo.zone, hummed) }
     fun wake() = act { s, now -> PetEngine.wake(s, now, repo.zone) }
     fun redeemSteps() = act { s, _ -> PetEngine.redeemSteps(s) }

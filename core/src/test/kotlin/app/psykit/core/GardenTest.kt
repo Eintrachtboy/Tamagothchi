@@ -123,4 +123,15 @@ class GardenTest {
         assertFalse(GardenEngine.plant(s, 0, Berry.GOLD, at(9)).success)
         assertTrue(GardenEngine.plant(s.copy(goldSeeds = 1), 0, Berry.GOLD, at(9)).success)
     }
+
+    @Test fun shovelledPoopBecomesFertilizer() {
+        var s = pet().copy(poops = 4)
+        repeat(3) { s = app.psykit.core.engine.PetEngine.removePoop(s) }
+        assertEquals(1, s.poops)
+        assertEquals(1, s.fertilizer)
+        assertEquals(0, s.compost)
+        s = app.psykit.core.engine.PetEngine.removePoop(s)
+        assertEquals(1, s.compost)
+        assertEquals(s, app.psykit.core.engine.PetEngine.removePoop(s))
+    }
 }

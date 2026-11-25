@@ -1,5 +1,6 @@
 package app.psykit.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,8 +47,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import app.psykit.core.battle.BattleEngine
 import app.psykit.core.battle.BattleState
 import app.psykit.core.battle.Fighter
@@ -86,10 +85,21 @@ fun DungeonPanel(s: PetState, onOpen: () -> Unit) {
     Button(onClick = onOpen, enabled = s.stage != Stage.EGG) { Text(if (s.run != null) "Weiter im Dungeon" else "Dungeon öffnen") }
 }
 
+/**
+ * Vollbild-Ebene im Activity-Fenster statt eines Dialog-Fensters: Dialog-Fenster bekommen bei
+ * Edge-to-Edge (Android 15) keine Navigationsleisten-Insets, dann verschwindet unten etwas.
+ * Hier greift safeDrawingPadding wie im Hauptbildschirm. Zurück-Taste schließt.
+ */
+@Composable
+fun FullScreenLayer(onBack: () -> Unit, content: @Composable () -> Unit) {
+    BackHandler(onBack = onBack)
+    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { content() }
+}
+
 @Composable
 fun DungeonDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () -> Unit) {
     LaunchedEffect(Unit) { vm.say("") }
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, decorFitsSystemWindows = false)) {
+    FullScreenLayer(onBack = onClose) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp)) {
                 val run = s.run

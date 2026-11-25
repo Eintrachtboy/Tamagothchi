@@ -230,6 +230,7 @@ fun ShopDialog(vm: PetViewModel, s: PetState, onClose: () -> Unit) {
                     } else Text("Das ist schon die beste Gießkanne.", style = MaterialTheme.typography.bodySmall)
                     Text("Beeren, die du behältst, kann dein Tierchen essen oder im Smoothie-Mixer verwenden.", style = MaterialTheme.typography.bodySmall)
                 }
+            }
             Spacer(Modifier.height(12.dp))
         }
     }

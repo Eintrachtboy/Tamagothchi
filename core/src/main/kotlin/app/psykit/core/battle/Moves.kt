@@ -4,7 +4,7 @@ import app.psykit.core.model.PetState
 import app.psykit.core.model.Stage
 
 /** Wen eine Attacke trifft. */
-enum class Target { ONE, ONE_ANY_ROW, ALL_FRONT, ALL, SELF }
+enum class Target { ONE, ONE_ANY_ROW, ALL_FRONT, ALL, SELF, RANDOM }
 
 /** Woher man eine Attacke bekommt. */
 sealed interface MoveSource {
@@ -12,6 +12,8 @@ sealed interface MoveSource {
     data class Shop(val price: Int) : MoveSource
     data class Training(val stat: TrainStat, val needed: Int) : MoveSource
     data class Drop(val where: String) : MoveSource
+    /** In einer Dungeon-Ebene versteckt (Index in Floors.all), nicht kaufbar. */
+    data class Hidden(val floor: Int) : MoveSource
 }
 
 enum class TrainStat(val label: String) { ATK("Angriff"), DEF("Abwehr"), SPD("Tempo"), PSI("Psi") }
@@ -57,7 +59,37 @@ enum class MoveId(
     BLIZZARD("Schneesturm", AttackType.FROST, 40, 6, Target.ALL, "Trifft alle, 30 % einfrieren", MoveSource.Drop("Klirr, die Gletscherkrabbe")),
     EMBER_BREATH("Glutatem", AttackType.FIRE, 50, 6, Target.ALL, "Trifft alle, Brand", MoveSource.Drop("Eisenofen")),
     TIGER_LEAP("Tigersprung", AttackType.CLAW, 70, 4, Target.ONE_ANY_ROW, "Springt über die vordere Reihe", MoveSource.Drop("Elite-Gegner in Welt 3")),
-    NIGHTMARE_GAZE("Albtraumblick", AttackType.PSI, 60, 6, Target.ONE_ANY_ROW, "Verwirrt und senkt den Angriff", MoveSource.Drop("Der Albtraum"), accuracy = 100);
+    NIGHTMARE_GAZE("Albtraumblick", AttackType.PSI, 60, 6, Target.ONE_ANY_ROW, "Verwirrt und senkt den Angriff", MoveSource.Drop("Der Albtraum"), accuracy = 100),
+    // ---- versteckt in den Ebenen (nicht kaufbar)
+    EMBER_SPARK("Glutfunke", AttackType.FIRE, 15, 0, Target.ONE_ANY_ROW, "30 % Brand für 2 Runden", MoveSource.Hidden(0)),
+    POISON_BITE("Giftbiss", AttackType.POISON, 25, 1, Target.ONE, "Doppelt stark gegen Vergiftete, sonst 30 % Gift", MoveSource.Hidden(1)),
+    DUST_WHIRL("Staubwirbel", null, 0, 2, Target.ALL, "Alle Gegner sehen 2 Runden schlechter (Treffsicherheit -15 %)", MoveSource.Hidden(2)),
+    EARTH_STOMP("Erdstampfer", AttackType.BLUNT, 30, 3, Target.ALL_FRONT, "Trifft alle vorne und zieht den stärksten Gegner von hinten nach vorne", MoveSource.Hidden(3)),
+    CLAW_TRAP("Krallenfalle", AttackType.CLAW, 40, 2, Target.SELF, "Konter: Wer dich in dieser Runde angreift, bekommt den Hieb", MoveSource.Hidden(4), priority = true),
+    MIND_THEFT("Gedankenraub", AttackType.PSI, 25, 0, Target.ONE_ANY_ROW, "Du bekommst 3 Psi-Punkte dazu", MoveSource.Hidden(5), accuracy = 100),
+    ICICLE_SPEAR("Eiszapfen", AttackType.FROST, 90, 3, Target.ONE_ANY_ROW, "Eine Runde aufladen, dann sehr starker Treffer, 30 % einfrieren", MoveSource.Hidden(6)),
+    MIRROR_PAW("Spiegelpfote", null, 0, 2, Target.SELF, "Der nächste Zustand, den dir ein Gegner gibt, trifft ihn selbst", MoveSource.Hidden(7)),
+    ICE_GLIDE("Eisgleiter", AttackType.FROST, 35, 2, Target.ONE, "Greift immer zuerst an, Tempo +1 Stufe", MoveSource.Hidden(8), priority = true),
+    CRYSTAL_ARMOR("Kristallpanzer", null, 0, 3, Target.SELF, "Schluckt die nächsten 30 Schaden", MoveSource.Hidden(9)),
+    AVALANCHE("Lawinenstoß", AttackType.BLUNT, 50, 4, Target.ALL_FRONT, "Trifft alle vorne, +25 % gegen Gepanzerte", MoveSource.Hidden(10)),
+    SCISSOR_CUT("Scherenschnitt", AttackType.CLAW, 25, 3, Target.ONE_ANY_ROW, "Zwei Schnitte, ignorieren Panzer", MoveSource.Hidden(11), hits = 2),
+    SPARK_RAIN("Funkenregen", AttackType.FIRE, 15, 3, Target.RANDOM, "Drei Funken auf zufällige Gegner, je 20 % Brand", MoveSource.Hidden(12), hits = 3),
+    SOOT_CLOUD("Rußwolke", AttackType.POISON, 20, 3, Target.ALL, "Vergiftet alle und senkt ihre Treffsicherheit", MoveSource.Hidden(13)),
+    HAMMER("Hammerschlag", AttackType.BLUNT, 75, 4, Target.ONE, "25 % betäuben, danach bist du 1 Runde langsam", MoveSource.Hidden(14), accuracy = 90),
+    LAVA_HEART("Lavaherz", null, 0, 4, Target.SELF, "3 Runden +25 % Feuer-Schaden und immun gegen Brand", MoveSource.Hidden(15)),
+    DREAM_CATCHER("Traumfänger", AttackType.PSI, 30, 2, Target.ONE_ANY_ROW, "Nimmt dem Ziel Schutz und Stärkungen weg", MoveSource.Hidden(16), accuracy = 100),
+    LULLABY_SONG("Schlaflied", null, 0, 3, Target.ALL, "Jeder Gegner schläft mit 50 % für 1 Runde ein", MoveSource.Hidden(17)),
+    SHOOTING_STAR("Sternschnuppe", AttackType.PSI, 100, 7, Target.RANDOM, "Trifft einen zufälligen Gegner, gegen Schlafende sicher kritisch", MoveSource.Hidden(18), accuracy = 100),
+    ECLIPSE("Mondfinsternis", AttackType.PSI, 60, 8, Target.ALL, "Trifft alle, 30 % Verwirrung", MoveSource.Hidden(19), accuracy = 100),
+
+    // ---- neu im Laden (wechselndes Angebot)
+    SNOWBALL("Schneeball", AttackType.FROST, 20, 1, Target.ONE_ANY_ROW, "20 % verlangsamen", MoveSource.Shop(120)),
+    STINKY_FOOT("Stinkefuß", AttackType.POISON, 10, 1, Target.ONE, "Vergiftet sicher", MoveSource.Shop(120)),
+    FLARE("Leuchtkugel", AttackType.PSI, 20, 1, Target.ONE_ANY_ROW, "Dein nächster Treffer trifft sicher", MoveSource.Shop(150), accuracy = 100),
+    PAW_WHIRL("Pfotenwirbel", AttackType.CLAW, 20, 2, Target.ALL_FRONT, "Senkt die Abwehr aller vorne", MoveSource.Shop(200)),
+    HOT_WATER_BOTTLE("Wärmflasche", null, 0, 2, Target.SELF, "Heilt 15 % KP und taut Frost und Langsam auf", MoveSource.Shop(250)),
+    HEADBUTT("Kopfnuss", AttackType.BLUNT, 45, 2, Target.ONE, "Kostet dich 5 % deiner KP", MoveSource.Shop(300));
+
 
     val isTrainingMove get() = source is MoveSource.Training
 
@@ -89,6 +121,15 @@ enum class MoveId(
         /** Alles, was das Tierchen kann: Stufe, Training, gekauft und gefunden. */
         fun known(p: PetState): List<MoveId> =
             (fromStage(p.stage) + fromTraining(p) + p.ownedMoves.mapNotNull { parse(it) }).distinct().sortedBy { it.ordinal }
+
+        /** Die in Ebene [floor] versteckte Attacke. */
+        fun hiddenIn(floor: Int): MoveId? = entries.firstOrNull { (it.source as? MoveSource.Hidden)?.floor == floor }
+
+        /** Stufe einer Attacke nach Einsätzen: ab 20 Stufe II, ab 60 Stufe III. */
+        const val LEVEL2_USES = 20
+        const val LEVEL3_USES = 60
+        fun levelFor(uses: Int) = when { uses >= LEVEL3_USES -> 3; uses >= LEVEL2_USES -> 2; else -> 1 }
+        fun level(p: PetState, m: MoveId) = levelFor(p.moveUses[m.name] ?: 0)
 
         /** Die 4 ausgerüsteten Attacken (oder sinnvolle Standardwahl). */
         fun equipped(p: PetState): List<MoveId> {

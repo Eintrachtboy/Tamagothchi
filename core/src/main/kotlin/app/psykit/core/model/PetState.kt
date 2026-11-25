@@ -88,6 +88,18 @@ data class PetState(
     val depthRecord: Int = 0,
     val run: app.psykit.core.dungeon.DungeonRun? = null,
     val lastRun: app.psykit.core.dungeon.RunReport? = null,
+    /** Einsätze je Attacke (für Attacken-Stufen). */
+    val moveUses: Map<String, Int> = emptyMap(),
+    /** Schon entdeckte Kombos (Namen aus Combo). */
+    val combosFound: List<String> = emptyList(),
+    /** Siege je Ebene (Wächter/Boss), für versteckte Attacken. */
+    val floorWins: Map<String, Int> = emptyMap(),
+    /** Laden: Tag des Angebots, Angebot, Tagesangebot und ob heute neu gewürfelt wurde. */
+    val shopDay: Long = -1,
+    val shopMoves: List<String> = emptyList(),
+    val shopItems: List<String> = emptyList(),
+    val shopDeal: String? = null,
+    val shopRerolled: Boolean = false,
 ) {
     val sluggish: Boolean get() = sluggishUntil > lastUpdate
 

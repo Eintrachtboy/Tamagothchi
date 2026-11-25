@@ -51,6 +51,7 @@ import app.psykit.core.battle.BattleEngine
 import app.psykit.core.battle.BattleState
 import app.psykit.core.battle.Fighter
 import app.psykit.core.battle.MoveId
+import app.psykit.core.battle.MoveSource
 import app.psykit.core.battle.PetAction
 import app.psykit.core.battle.Potion
 import app.psykit.core.battle.TypeChart
@@ -121,6 +122,7 @@ fun DungeonDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () ->
                         run == null && s.lastRun != null -> RunResultView(s, onOk = { vm.clearLastRun() })
                         run == null -> FloorSelect(s, vm)
                         run.battle != null -> BattleView(vm, s, run.battle!!, sprite)
+                        run.cards.isNotEmpty() -> CardView(vm, s, run)
                         run.bridge -> BridgeView(vm, run)
                         run.event != null -> EventView(vm, s, run)
                         run.room == RoomType.REST -> RestView(vm, s, run)
@@ -158,6 +160,14 @@ private fun FloorSelect(s: PetState, vm: PetViewModel) {
                             Column(Modifier.weight(1f)) {
                                 Text((if (done) "✓ " else if (!open) "🔒 " else "") + "${f.code} ${f.name}", fontWeight = if (open && !done) FontWeight.Bold else FontWeight.Normal)
                                 Text("Level ${f.level}" + if (f.rule.name != "NONE") " · ${f.rule.label}: ${f.rule.info}" else "", style = MaterialTheme.typography.bodySmall)
+                                MoveId.hiddenIn(f.index)?.let { h ->
+                                    val found = h.name in s.ownedMoves
+                                    Text(
+                                        if (found) "✓ Versteckte Attacke gefunden: ${h.label}" else "❓ Hier ist eine Attacke versteckt",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (found) Color(0xFF2E7D32) else Gold,
+                                    )
+                                }
                             }
                             Spacer(Modifier.width(6.dp))
                             if (open) Button(onClick = {
@@ -200,6 +210,10 @@ private fun DungeonRules() {
             Text("• Krallen und Wucht treffen nur die vordere Reihe. Feuer, Frost, Gift und Psi treffen auch hinten.", style = MaterialTheme.typography.bodySmall)
             Text("• Typen: Krallen gut gegen Weiches und Pflanzen, Wucht knackt Panzer, Feuer brennt Pflanzen, Frost löscht Glut, Psi trifft Geister.", style = MaterialTheme.typography.bodySmall)
             Text("• Ein gut gepflegtes Tierchen kämpft stärker. Hunger und schlechte Laune kosten bis zu 50 % Kraft.", style = MaterialTheme.typography.bodySmall)
+            Text("• Jede Ebene versteckt eine Attacke, die es nirgends zu kaufen gibt. Jeder Sieg über Wächter oder Boss gibt 40 % Chance, spätestens beim dritten Sieg gehört sie dir.", style = MaterialTheme.typography.bodySmall)
+            Text("• Nach normalen Kämpfen und Elitekämpfen wählst du eine von drei Fundkarten: eine Attacke nur für diesen Lauf, auf einem 5. Platz. Überspringen gibt +${DungeonEngine.SKIP_CARD_DUST} ✨.", style = MaterialTheme.typography.bodySmall)
+            Text("• Kombos: Manche Zustände und Attackentypen passen besonders gut zusammen. Probier aus, was passiert! Gefundene Kombos stehen im Sammelbuch.", style = MaterialTheme.typography.bodySmall)
+            Text("• Attacken werden mit Übung besser: nach ${MoveId.LEVEL2_USES} Einsätzen ★ (+15 %), nach ${MoveId.LEVEL3_USES} ★★ (+30 % und ein Extra).", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -258,6 +272,7 @@ private fun RunStatus(run: DungeonRun) {
         Column(Modifier.padding(12.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             HpBar("KP", run.hp, run.maxHp)
             Text("Beute: ✨ ${run.dust} · ${run.exp} EP · ${run.items.size} Funde · 🧪 ${run.healPotions} · 💜 ${run.psiPotions}", style = MaterialTheme.typography.bodySmall)
+            run.fundMove?.let { MoveId.parse(it) }?.let { Text("🃏 Fundattacke: ${it.type?.emoji ?: "✳️"} ${it.label}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold) }
         }
     }
 }
@@ -325,6 +340,44 @@ private fun MerchantView(vm: PetViewModel, s: PetState, run: DungeonRun) {
 }
 
 @Composable
+private fun CardView(vm: PetViewModel, s: PetState, run: DungeonRun) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        RunStatus(run)
+        if (run.note.isNotEmpty()) Text(run.note, textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall)
+        Text("🃏 Fundkarten", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        Text(
+            if (run.fundMove != null) "Eine neue Karte ersetzt deine Fundattacke. Sie gilt nur für diesen Lauf."
+            else "Wähle eine Attacke für den Rest dieses Laufs. Sie kommt auf einen 5. Platz.",
+            textAlign = TextAlign.Center, style = MaterialTheme.typography.bodySmall,
+        )
+        val weak = DungeonEngine.weakness(Floors.get(run.floor))
+        run.cards.mapNotNull { MoveId.parse(it) }.forEachIndexed { i, m ->
+            val rarity = DungeonEngine.cardRarity(m)
+            val color = listOf(MaterialTheme.colorScheme.outlineVariant, Color(0xFF3E8EDE), Color(0xFF8C6BE0))[rarity]
+            Column(
+                Modifier.fillMaxWidth()
+                    .border(if (rarity > 0) 2.dp else 1.dp, color, RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(14.dp))
+                    .clickable { vm.chooseCard(i) }
+                    .padding(12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(m.type?.emoji ?: "✳️", fontSize = 28.sp)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(m.label, fontWeight = FontWeight.Bold)
+                        Text(DungeonEngine.cardRarityLabel(m) + if (m.type == weak) " · trifft die Schwäche dieser Welt" else "", style = MaterialTheme.typography.labelSmall, color = if (rarity > 0) color else MaterialTheme.colorScheme.onSurface)
+                    }
+                    if (m in MoveId.known(s)) Text("kennst du", style = MaterialTheme.typography.labelSmall)
+                }
+                Text(moveLine(m), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        OutlinedButton(onClick = { vm.chooseCard(-1) }, modifier = Modifier.fillMaxWidth()) { Text("Liegen lassen: +${DungeonEngine.SKIP_CARD_DUST} ✨") }
+    }
+}
+
+@Composable
 private fun BridgeView(vm: PetViewModel, run: DungeonRun) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         RunStatus(run)
@@ -344,7 +397,9 @@ private fun RunResultView(s: PetState, onOk: () -> Unit) {
         Text(if (!r.won) "Niederlage" else if (r.cleared) "Geschafft!" else "Zurück mit der Beute", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(r.text, textAlign = TextAlign.Center)
         r.items.mapNotNull { Item.parse(it) }.forEach { Text("${it.emoji} ${it.label} (${it.rarity.label}): ${it.bonusText}", style = MaterialTheme.typography.bodySmall) }
-        r.moves.mapNotNull { MoveId.parse(it) }.forEach { Text("Neue Attacke: ${it.label}", fontWeight = FontWeight.Bold) }
+        r.moves.mapNotNull { MoveId.parse(it) }.forEach {
+            Text(if (it.source is MoveSource.Hidden) "❓ Versteckte Attacke entdeckt: ${it.label}!" else "Neue Attacke: ${it.label}", fontWeight = FontWeight.Bold, color = if (it.source is MoveSource.Hidden) Gold else Color.Unspecified)
+        }
         Button(onClick = onOk) { Text("OK") }
     }
 }
@@ -369,12 +424,24 @@ fun MovesEditor(s: PetState, onSave: (List<MoveId>) -> Unit) {
                 Text(if (on) "☑" else "☐", fontSize = 18.sp)
                 Spacer(Modifier.width(8.dp))
                 Column(Modifier.weight(1f)) {
-                    Text("${m.type?.emoji ?: "✳️"} ${m.label}" + (if (MoveId.empowered(s, m)) " ⭐" else ""), fontWeight = FontWeight.Bold)
+                    Text("${m.type?.emoji ?: "✳️"} ${m.label}" + stars(MoveId.level(s, m)) + (if (MoveId.empowered(s, m)) " ⭐" else ""), fontWeight = FontWeight.Bold)
                     Text(moveLine(m), style = MaterialTheme.typography.bodySmall)
+                    Text(usesLine(s, m), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f))
                 }
             }
         }
         Button(onClick = { onSave(chosen) }, enabled = chosen.isNotEmpty(), modifier = Modifier.fillMaxWidth()) { Text("Speichern") }
+    }
+}
+
+fun stars(level: Int) = when (level) { 3 -> " ★★"; 2 -> " ★"; else -> "" }
+
+fun usesLine(s: PetState, m: MoveId): String {
+    val n = s.moveUses[m.name] ?: 0
+    return when {
+        n >= MoveId.LEVEL3_USES -> "Stufe III · $n Einsätze"
+        n >= MoveId.LEVEL2_USES -> "Stufe II · $n/${MoveId.LEVEL3_USES} Einsätze bis ★★"
+        else -> "Stufe I · $n/${MoveId.LEVEL2_USES} Einsätze bis ★"
     }
 }
 
@@ -432,6 +499,8 @@ private fun BattleView(vm: PetViewModel, s: PetState, st: BattleState, sprite: S
                     val ok = BattleEngine.canUse(st, m)
                     val eff = if (m.type != null && selected != null && BattleEngine.needsTarget(m)) TypeChart.label(BattleEngine.effectiveness(st, m, selected)) else ""
                     val reach = !BattleEngine.needsTarget(m) || selected == null || BattleEngine.targets(st, m).any { it.id == selected.id }
+                    val combo = if (selected != null && reach) BattleEngine.comboFor(m, selected) else null
+                    val charged = st.charging == m
                     FilledTonalButton(
                         onClick = { vm.battle(PetAction(m, if (reach) target else null)) },
                         enabled = ok,
@@ -439,12 +508,14 @@ private fun BattleView(vm: PetViewModel, s: PetState, st: BattleState, sprite: S
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp),
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("${m.type?.emoji ?: "✳️"} ${m.label}", fontWeight = FontWeight.Bold, maxLines = 1, fontSize = 13.sp)
+                            Text((if (m == st.fundMove) "🃏 " else "") + "${m.type?.emoji ?: "✳️"} ${m.label}" + stars(BattleEngine.level(st, m)), fontWeight = FontWeight.Bold, maxLines = 1, fontSize = 13.sp)
                             Text(
-                                (if (m.power > 0) "Stärke ${m.power}" + (if (m.hits > 1) "×${m.hits}" else "") + " · " else "") + "${m.psiCost} Psi",
+                                if (charged) "Aufgeladen: jetzt loslassen!" else
+                                    (if (m.power > 0) "Stärke ${m.power}" + (if (m.hits > 1) "×${m.hits}" else "") + " · " else "") + "${BattleEngine.cost(st, m)} Psi",
                                 fontSize = 11.sp,
                             )
-                            if (eff.isNotEmpty() || !reach) Text(if (!reach) "erreicht nur vorne" else eff, fontSize = 10.sp, color = if (!reach || eff.startsWith("wenig") || eff.startsWith("fast")) Color(0xFFE5484D) else Color(0xFF2E7D32))
+                            if (combo != null) Text("Kombo: ${combo.label}!", fontSize = 10.sp, color = Gold, fontWeight = FontWeight.Bold)
+                            else if (eff.isNotEmpty() || !reach) Text(if (!reach) "erreicht nur vorne" else eff, fontSize = 10.sp, color = if (!reach || eff.startsWith("wenig") || eff.startsWith("fast")) Color(0xFFE5484D) else Color(0xFF2E7D32))
                         }
                     }
                 }

@@ -36,6 +36,21 @@ enum class Status(val label: String, val emoji: String, val skips: Boolean = fal
     NET("Netz", "🕸️", true), CONFUSED("Verwirrt", "😵"), BLIND("Geblendet", "🤧"),
     SHIELD("Mondschild", "🌙"), CURLED("Eingerollt", "🛡️"), BURROWED("Eingegraben", "⛰️"),
     MIRROR("Spiegelt", "✨"), SOOT("Rußwolke", "🌫️"), ROOTED("Wurzelgriff", "🌱"),
+    TOXIC("Tiefes Gift", "🧪"),
+}
+
+/** Kombos: Zustand auf dem Gegner + passender Angriffstyp. Der Zustand wird verbraucht. */
+enum class Combo(val label: String, val info: String, val status: Status, val type: AttackType) {
+    SHATTER("Zerschmettern", "Eingefroren + Wucht: +50 % Schaden", Status.FROZEN, AttackType.BLUNT),
+    POISON_BLAST("Giftexplosion", "Vergiftet + Feuer: 25 % des Treffers an alle anderen Gegner", Status.POISON, AttackType.FIRE),
+    HELPLESS("Wehrloser Hieb", "Betäubt + Krallen: sicherer kritischer Treffer", Status.STUN, AttackType.CLAW),
+    STEAM("Dampfstoß", "Brennt + Frost: Gegner verliert seine nächste Aktion", Status.BURN, AttackType.FROST),
+    NIGHTMARE("Albtraum", "Schläft + Psi: +40 % Schaden und 2 Runden verwirrt", Status.SLEEP, AttackType.PSI),
+    DEEP_POISON("Tiefes Gift", "Verlangsamt + Gift: Gift wirkt doppelt so stark", Status.SLOW, AttackType.POISON);
+
+    companion object {
+        fun of(f: Fighter, type: AttackType?): Combo? = if (type == null) null else entries.firstOrNull { it.type == type && f.has(it.status) }
+    }
 }
 
 enum class StatKind { ATK, DEF, SPD }
@@ -165,6 +180,21 @@ class BattleState(
     var log: MutableList<String> = mutableListOf(),
     var hits: MutableList<Hit> = mutableListOf(),
     var outcome: Outcome? = null,
+    /** Stufe je Attacke (1 bis 3), beim Start aus den Einsätzen berechnet. */
+    val levels: Map<MoveId, Int> = emptyMap(),
+    var trap: Boolean = false,
+    var trapHit: Boolean = false,
+    var charging: MoveId? = null,
+    var chargeTarget: Int? = null,
+    var mirrorPaw: Boolean = false,
+    var crystal: Int = 0,
+    var lavaHeart: Int = 0,
+    var sureHit: Boolean = false,
+    /** In dieser Runde eingesetzte Attacke und ausgelöste Kombos (für Stufen und Kombo-Buch). */
+    var usedMove: MoveId? = null,
+    var combos: MutableList<String> = mutableListOf(),
+    /** Fundattacke dieses Laufs (5. Platz). */
+    val fundMove: MoveId? = null,
 ) {
     val alive get() = enemies.filter { it.alive }
     fun copy(): BattleState = BattleEngine.json.decodeFromString(serializer(), BattleEngine.json.encodeToString(serializer(), this))
@@ -238,7 +268,7 @@ object BattleEngine {
     }
 
     fun start(p: PetState, specs: List<EnemySpec>, rule: FloorRule, world: Int, seed: Long, hp: Int? = null,
-              healPotions: Int = 0, psiPotions: Int = 0, startNet: Boolean = false): BattleState {
+              healPotions: Int = 0, psiPotions: Int = 0, startNet: Boolean = false, fundMove: MoveId? = null): BattleState {
         val bonuses = PetBonuses.of(p)
         val maxPsi = maxPsi(p)
         val pet = petFighter(p, hp)
@@ -246,9 +276,11 @@ object BattleEngine {
             seed = seed, pet = pet,
             enemies = specs.mapIndexed { i, s -> enemyFighter(s, i + 1) }.toMutableList(),
             psi = (maxPsi + bonuses.startPsi).toFloat(), maxPsi = maxPsi,
-            moves = MoveId.equipped(p).toMutableList(),
+            moves = (MoveId.equipped(p) + listOfNotNull(fundMove)).distinct().toMutableList(),
             empowered = MoveId.known(p).filter { MoveId.empowered(p, it) },
             rule = rule, world = world, bonuses = bonuses, healPotions = healPotions, psiPotions = psiPotions,
+            levels = (MoveId.known(p) + listOfNotNull(fundMove)).associateWith { MoveId.level(p, it) }.filterValues { it > 1 },
+            fundMove = fundMove,
         )
         if (startNet) addStatus(st, pet, Status.NET, 1)
         val rng = Random(seed)
@@ -264,8 +296,28 @@ object BattleEngine {
 
     // ------------------------------------------------------------ Hilfen für die Oberfläche
 
+    fun level(st: BattleState, m: MoveId) = st.levels[m] ?: 1
+
+    /** Psi-Kosten mit Stufen-Rabatt. */
+    fun cost(st: BattleState, m: MoveId): Int {
+        val lv = level(st, m)
+        var c = m.psiCost
+        if (m == MoveId.PSI_WAVE && lv >= 3) c = 2
+        else if (m.type == null && lv >= 2) c -= 1
+        else if (lv >= 3 && m !in LEVEL3_EXTRAS) c -= 1
+        return c.coerceAtLeast(0)
+    }
+
+    /** Attacken mit eigenem Zusatz auf Stufe III (alle anderen kosten dort 1 Psi weniger). */
+    private val LEVEL3_EXTRAS = setOf(MoveId.PAW, MoveId.BUMP, MoveId.DUCK, MoveId.PSI_WAVE, MoveId.SPARK_SNEEZE, MoveId.EMBER_SPARK,
+        MoveId.FROST_BREATH, MoveId.ICICLE_SPEAR)
+
+    /** Kombo, die [m] gegen [f] auslösen würde (für die Anzeige). */
+    fun comboFor(m: MoveId, f: Fighter): Combo? = Combo.of(f, m.type)
+
     fun canUse(st: BattleState, m: MoveId): Boolean {
-        if (st.psi + 0.001f < m.psiCost) return false
+        if (st.charging != null) return m == st.charging
+        if (st.psi + 0.001f < cost(st, m)) return false
         if (m == MoveId.PURR && st.purrUsed) return false
         if (st.pet.has(Status.ROOTED) && m.type?.physical == true) return false
         return true
@@ -283,6 +335,7 @@ object BattleEngine {
             Target.ALL_FRONT -> if (front.isEmpty()) alive else front
             Target.ALL -> alive
             Target.SELF -> emptyList()
+            Target.RANDOM -> alive
         }
     }
 
@@ -302,6 +355,7 @@ object BattleEngine {
         val rng = Random(st.seed * 31 + st.round * 7919L)
         val pet = st.pet
         st.ducking = false
+        st.trap = false; st.trapHit = false; st.usedMove = null; st.combos = mutableListOf()
 
         if (st.rule == FloorRule.SLEEPY && !pet.has(Status.SLEEP) && rng.nextInt(100) < 10) {
             addStatus(st, pet, Status.SLEEP, 1); st.log += "${pet.name} nickt kurz ein …"
@@ -309,7 +363,7 @@ object BattleEngine {
 
         // Reihenfolge: Priorität, dann Tempo
         data class Turn(val f: Fighter, val prio: Boolean, val speed: Double, val tie: Int)
-        val petPrio = action.move?.priority == true
+        val petPrio = st.charging == null && action.move?.priority == true
         val turns = mutableListOf(Turn(pet, petPrio, speedOf(pet), rng.nextInt(1000)))
         st.alive.forEach { turns += Turn(it, false, speedOf(it), rng.nextInt(1000)) }
         val ordered = turns.sortedWith(compareByDescending<Turn> { it.prio }.thenByDescending { it.speed }.thenBy { it.tie })
@@ -323,6 +377,7 @@ object BattleEngine {
                 checkOutcome(st)
             }
         }
+        if (st.trap && !st.trapHit && st.outcome == null) st.log += "Die Krallenfalle verpufft, niemand hat angegriffen."
         if (st.outcome == null) endOfRound(st, rng)
         checkOutcome(st)
         if (st.outcome == null) {
@@ -350,6 +405,7 @@ object BattleEngine {
         if (f.isPet) {
             if ((s == Status.FROZEN || s == Status.SLOW) && st.bonuses.noFreezeSlow) return false
             if (s == Status.CONFUSED && st.bonuses.noConfusion) return false
+            if (s == Status.BURN && st.lavaHeart > 0) return false
         }
         if ((f.immune[s] ?: 0) > 0) return false
         if (f.boss != null && s.skips && s != Status.STUN) return false
@@ -393,6 +449,13 @@ object BattleEngine {
         val pet = st.pet
         val m = a.move
         if (!canAct(st, pet, rng, clawAction = m?.type == AttackType.CLAW)) return
+        // Aufgeladener Eiszapfen fliegt jetzt, egal was gewählt wurde
+        st.charging?.let { c ->
+            st.charging = null
+            st.usedMove = c
+            attackWith(st, c, st.chargeTarget, c in st.empowered, rng)
+            return
+        }
         a.potion?.let { usePotion(st, it); return }
         if (m == null) { st.log += "${pet.name} wartet ab."; return }
         if (!canUse(st, m)) { st.log += "Dafür reicht es gerade nicht."; return }
@@ -407,8 +470,9 @@ object BattleEngine {
                 return
             }
         }
-        st.psi -= m.psiCost
+        st.psi -= cost(st, m)
         st.lastPetMove = m
+        st.usedMove = m
         if (m.type == AttackType.BLUNT) { pet.status.remove(Status.SOOT); st.roundsWithoutBlunt = 0 }
         if (m.type == AttackType.CLAW && st.rule == FloorRule.THORNS) damage(st, pet, 2, "Dornen")
         val emp = m in st.empowered
@@ -424,6 +488,24 @@ object BattleEngine {
             MoveId.PURR -> { st.purrUsed = true; heal(st, pet, (pet.maxHp * 0.25).roundToInt()); st.log += "${pet.name} schnurrt und erholt sich." }
             MoveId.LUCKY_PAW -> { st.lucky = true; if (emp) st.psi += 2; st.log += "${pet.name} reibt sich die Glückspfote." }
             MoveId.IRON_FUR -> { changeStage(pet, StatKind.DEF, if (emp) 3 else 2); st.log += "${pet.name}s Fell wird hart wie Eisen." }
+            MoveId.DUST_WHIRL -> { st.alive.forEach { addStatus(st, it, Status.BLIND, 3) }; st.log += "${pet.name} wirbelt Staub auf. Die Gegner sehen schlechter." }
+            MoveId.CLAW_TRAP -> { st.trap = true; st.log += "${pet.name} stellt eine Krallenfalle." }
+            MoveId.MIRROR_PAW -> { st.mirrorPaw = true; st.log += "${pet.name}s Pfote glänzt wie ein Spiegel." }
+            MoveId.CRYSTAL_ARMOR -> { st.crystal = 30; st.log += "Ein Kristallpanzer umhüllt ${pet.name}." }
+            MoveId.LAVA_HEART -> { st.lavaHeart = 3; pet.status.remove(Status.BURN); st.log += "${pet.name}s Herz glüht wie Lava." }
+            MoveId.HOT_WATER_BOTTLE -> {
+                heal(st, pet, (pet.maxHp * 0.15).roundToInt()); pet.status.remove(Status.FROZEN); pet.status.remove(Status.SLOW)
+                st.log += "${pet.name} kuschelt sich an die Wärmflasche."
+            }
+            MoveId.LULLABY_SONG -> {
+                st.log += "${pet.name} summt ein Schlaflied …"
+                st.alive.forEach { if (rng.nextInt(100) < 50 && addStatus(st, it, Status.SLEEP, 1)) st.log += "${it.name} schläft ein." }
+            }
+            MoveId.ICICLE_SPEAR -> {
+                st.charging = m
+                st.chargeTarget = a.target
+                st.log += "${pet.name} lässt einen riesigen Eiszapfen wachsen …"
+            }
             else -> attackWith(st, m, a.target, emp, rng)
         }
         st.psi = st.psi.coerceIn(0f, st.maxPsi.toFloat() + st.bonuses.startPsi)
@@ -447,19 +529,28 @@ object BattleEngine {
         if (possible.isEmpty()) return
         val victims = when (m.target) {
             Target.ALL, Target.ALL_FRONT -> possible
+            Target.RANDOM -> emptyList()
             else -> listOf(possible.firstOrNull { it.id == targetId } ?: possible.first())
         }
         st.log += "${pet.name} setzt ${m.label} ein!"
-        for (v in victims) {
-            repeat(m.hits) { h ->
-                if (!v.alive) return@repeat
+        val lvMult = when (level(st, m)) { 3 -> 1.3; 2 -> 1.15; else -> 1.0 }
+        fun strike(v: Fighter, h: Int) {
+                if (!v.alive) return
                 // Treffer?
                 if (v.has(Status.BURROWED) && type != AttackType.BLUNT && type != AttackType.PSI) {
-                    st.log += "${v.name} ist eingegraben, ${m.label} geht ins Leere."; return@repeat
+                    st.log += "${v.name} ist eingegraben, ${m.label} geht ins Leere."; return
                 }
-                if (!hits(st, pet, v, m.accuracy, rng)) { st.log += "Daneben!"; st.hits += Hit(v.id, 0, note = "verfehlt"); return@repeat }
-                var power = m.power.toDouble()
+                val sure = st.sureHit && m != MoveId.FLARE
+                if (sure) st.sureHit = false
+                if (!sure && !hits(st, pet, v, m.accuracy, rng)) { st.log += "Daneben!"; st.hits += Hit(v.id, 0, note = "verfehlt"); return }
+                var power = m.power.toDouble() * lvMult
                 if (emp) power *= 1.3
+                if (m == MoveId.POISON_BITE && (v.has(Status.POISON) || v.has(Status.TOXIC))) power *= 2.0
+                if (m == MoveId.AVALANCHE && v.body == Body.ARMORED) power *= 1.25
+                if (type == AttackType.FIRE && st.lavaHeart > 0) power *= 1.25
+                val combo = Combo.of(v, type)
+                if (combo == Combo.SHATTER) power *= 1.5
+                if (combo == Combo.NIGHTMARE) power *= 1.4
                 if (m == MoveId.RAGE_CLAW) power *= 1.0 + (1.0 - pet.hpPct())
                 // Spiegel der Kristallfledermaus
                 if (type == AttackType.PSI && v.has(Status.MIRROR)) {
@@ -467,14 +558,15 @@ object BattleEngine {
                     val d = (hitRaw(pet, pet, power.roundToInt(), type, rng) * 0.5).roundToInt().coerceAtLeast(1)
                     damage(st, pet, d, "gespiegelt")
                     st.log += "${v.name} wirft die Psi-Kraft zurück! (-$d)"
-                    return@repeat
+                    return
                 }
-                val crit = st.lucky || rng.nextInt(100) < CRIT_CHANCE + st.bonuses.crit
-                if (crit) st.lucky = false
+                val forced = combo == Combo.HELPLESS || (m == MoveId.SHOOTING_STAR && v.has(Status.SLEEP))
+                val crit = forced || st.lucky || rng.nextInt(100) < CRIT_CHANCE + st.bonuses.crit
+                if (crit && !forced) st.lucky = false
                 var mult = effectiveness(st, m, v) * (if (crit) CRIT_MULT else 1.0)
                 mult *= 1.0 + ((st.bonuses.typeDmg[type] ?: 0) + (v.body?.let { st.bonuses.bodyDmg[it] } ?: 0)) / 100.0
                 if (v.enemy?.world in st.bonuses.setWorlds || v.boss?.world in st.bonuses.setWorlds) mult *= 1.0 + SET_BONUS / 100.0
-                val ignoreArmor = m == MoveId.LEVITATE_THROW
+                val ignoreArmor = m == MoveId.LEVITATE_THROW || m == MoveId.SCISSOR_CUT
                 val d = (hitRaw(pet, v, power.roundToInt(), type, rng, ignoreArmor) * mult * bossTaken(st, v, ignoreArmor)).roundToInt().coerceAtLeast(1)
                 if (h == 0 || m.hits == 1) {
                     val eff = TypeChart.label(effectiveness(st, m, v))
@@ -482,17 +574,48 @@ object BattleEngine {
                 }
                 damage(st, v, d, if (crit) "kritisch!" else TypeChart.label(effectiveness(st, m, v)))
                 if (type == AttackType.PSI && st.rule == FloorRule.MIRRORING) damage(st, pet, (d * 0.15).roundToInt().coerceAtLeast(1), "Spiegel")
+                if (combo != null) applyCombo(st, combo, v, d)
                 afterPetHit(st, m, type, v, d, rng)
-            }
+        }
+        if (m.target == Target.RANDOM) {
+            repeat(m.hits) { h -> st.alive.randomOrNull(rng)?.let { strike(it, h) } }
+        } else for (v in victims) repeat(m.hits) { h -> strike(v, h) }
+        if (m == MoveId.EARTH_STOMP) {
+            st.alive.filter { !it.front }.maxByOrNull { it.hp }?.let { it.front = true; st.log += "${it.name} wird nach vorne gezogen!" }
         }
         if (type == AttackType.FROST && st.rule == FloorRule.FORGE_HEAT) heal(st, pet, 5)
     }
 
+    private fun applyCombo(st: BattleState, c: Combo, v: Fighter, d: Int) {
+        v.status.remove(c.status)
+        st.log += "💥 Kombo: ${c.label}!"
+        if (c.name !in st.combos) st.combos += c.name
+        when (c) {
+            Combo.POISON_BLAST -> st.alive.filter { it.id != v.id }.forEach { damage(st, it, (d * 0.25).roundToInt().coerceAtLeast(1), "Explosion") }
+            Combo.STEAM -> if (v.alive) { v.status[Status.STUN] = 1; v.immune.remove(Status.STUN) }
+            Combo.NIGHTMARE -> if (v.alive) addStatus(st, v, Status.CONFUSED, 2)
+            Combo.DEEP_POISON -> if (v.alive) { v.status[Status.POISON] = 99; v.status[Status.TOXIC] = 99 }
+            else -> {}
+        }
+    }
+
+    private fun burnTurns(st: BattleState, base: Int, m: MoveId) = base + (if (st.bonuses.longerBurn) 1 else 0) + (if (level(st, m) >= 3) 1 else 0)
+
     /** Nebeneffekte eines Treffers des Tierchens. */
     private fun afterPetHit(st: BattleState, m: MoveId, type: AttackType, v: Fighter, d: Int, rng: Random) {
         val pet = st.pet
+        val lv3 = level(st, m) >= 3
+        // Wirkungen auf das Tierchen selbst, auch wenn das Ziel fällt
+        when (m) {
+            MoveId.MIND_THEFT -> { st.psi = min(st.maxPsi.toFloat(), st.psi + 3); st.log += "${pet.name} klaut 3 Psi-Punkte." }
+            MoveId.ICE_GLIDE -> changeStage(pet, StatKind.SPD, 1)
+            MoveId.FLARE -> { st.sureHit = true; st.log += "Alles ist hell erleuchtet. Der nächste Treffer sitzt." }
+            MoveId.HEADBUTT -> damage(st, pet, (pet.maxHp * 0.05).roundToInt().coerceAtLeast(1), "Kopfnuss")
+            MoveId.HAMMER -> pet.status[Status.SLOW] = 2
+            else -> {}
+        }
         when (type) {
-            AttackType.CLAW -> if (rng.nextInt(100) < 20 || m == MoveId.SCRATCH_SPIN) changeStage(v, StatKind.DEF, -1)
+            AttackType.CLAW -> if (rng.nextInt(100) < 20 || m == MoveId.SCRATCH_SPIN || m == MoveId.PAW_WHIRL || (m == MoveId.PAW && lv3)) changeStage(v, StatKind.DEF, -1)
             AttackType.BLUNT -> {
                 if (v.has(Status.CURLED)) { v.status.remove(Status.CURLED); st.log += "${v.name}s Panzer wird aufgebrochen!" }
                 if (v.boss == BossKind.KLIRR && v.shells > 0) { v.shells--; st.log += "Eine Panzerschicht von Klirr zerbricht! (noch ${v.shells})" }
@@ -505,15 +628,29 @@ object BattleEngine {
         }
         if (!v.alive) return
         when (m) {
-            MoveId.BUMP -> if (rng.nextInt(100) < 20 && addStatus(st, v, Status.STUN, 1)) st.log += "${v.name} ist betäubt!"
+            MoveId.BUMP -> if (rng.nextInt(100) < (if (lv3) 30 else 20) && addStatus(st, v, Status.STUN, 1)) st.log += "${v.name} ist betäubt!"
             MoveId.BELLY_FLOP -> {
                 if (rng.nextInt(100) < 30 && addStatus(st, v, Status.STUN, 1)) st.log += "${v.name} ist betäubt!"
                 pet.status[Status.SLOW] = 2
             }
             MoveId.STINK_CLOUD -> addStatus(st, v, Status.POISON, 99)
             MoveId.SPORES -> { addStatus(st, v, Status.POISON, 99); if (rng.nextInt(100) < 40 && addStatus(st, v, Status.SLEEP, 2)) st.log += "${v.name} schläft ein." }
-            MoveId.SPARK_SNEEZE, MoveId.EMBER_BREATH -> addStatus(st, v, Status.BURN, if (st.bonuses.longerBurn) 4 else 3)
-            MoveId.FROST_BREATH -> addStatus(st, v, Status.SLOW, 3)
+            MoveId.SPARK_SNEEZE, MoveId.EMBER_BREATH -> addStatus(st, v, Status.BURN, burnTurns(st, 3, m))
+            MoveId.FROST_BREATH -> { addStatus(st, v, Status.SLOW, 3); if (lv3 && rng.nextInt(100) < 10 && addStatus(st, v, Status.FROZEN, 1)) st.log += "${v.name} friert ein!" }
+            MoveId.EMBER_SPARK -> if (rng.nextInt(100) < 30) addStatus(st, v, Status.BURN, burnTurns(st, 2, m))
+            MoveId.POISON_BITE -> if (!v.has(Status.POISON) && rng.nextInt(100) < 30) addStatus(st, v, Status.POISON, 99)
+            MoveId.ICICLE_SPEAR -> if (rng.nextInt(100) < (if (lv3) 40 else 30) && addStatus(st, v, Status.FROZEN, 1)) st.log += "${v.name} friert ein!"
+            MoveId.SPARK_RAIN -> if (rng.nextInt(100) < 20) addStatus(st, v, Status.BURN, burnTurns(st, 2, m))
+            MoveId.SOOT_CLOUD -> { addStatus(st, v, Status.POISON, 99); addStatus(st, v, Status.BLIND, 3) }
+            MoveId.HAMMER -> if (rng.nextInt(100) < 25 && addStatus(st, v, Status.STUN, 1)) st.log += "${v.name} ist betäubt!"
+            MoveId.DREAM_CATCHER -> {
+                listOf(Status.CURLED, Status.MIRROR, Status.BURROWED, Status.SHIELD).forEach { v.status.remove(it) }
+                StatKind.entries.forEach { k -> if (v.stage(k) > 0) v.stages[k] = 0 }
+                st.log += "${v.name} verliert Schutz und Stärkungen."
+            }
+            MoveId.ECLIPSE -> if (rng.nextInt(100) < 30) addStatus(st, v, Status.CONFUSED, 2)
+            MoveId.SNOWBALL -> if (rng.nextInt(100) < 20) addStatus(st, v, Status.SLOW, 2)
+            MoveId.STINKY_FOOT -> addStatus(st, v, Status.POISON, 99)
             MoveId.BLIZZARD -> if (rng.nextInt(100) < 30 && addStatus(st, v, Status.FROZEN, 1)) st.log += "${v.name} friert ein!"
             MoveId.NIGHTMARE_GAZE -> { addStatus(st, v, Status.CONFUSED, 2); changeStage(v, StatKind.ATK, -1) }
             else -> {}
@@ -597,15 +734,45 @@ object BattleEngine {
     /** Gegner trifft das Tierchen. */
     private fun enemyHit(st: BattleState, e: Fighter, power: Int, type: AttackType, rng: Random, label: String? = null): Int {
         val pet = st.pet
-        if (!hits(st, e, pet, 95, rng)) { st.log += "${e.name} verfehlt ${pet.name}."; st.hits += Hit(0, 0, note = "verfehlt"); return 0 }
+        if (!hits(st, e, pet, 95, rng)) { st.log += "${e.name} verfehlt ${pet.name}."; st.hits += Hit(0, 0, note = "verfehlt"); trapCounter(st, e, rng); return 0 }
         var d = hitRaw(e, pet, power, type, rng).toDouble()
         if (e.enemy?.trick == Trick.RAGE && e.hpPct() < 0.5f) d *= 2.0
         if (pet.has(Status.SHIELD)) d *= 0.5
         if (st.ducking) d *= 0.5
-        val dmg = d.roundToInt().coerceAtLeast(1)
-        damage(st, pet, dmg)
+        var dmg = d.roundToInt().coerceAtLeast(1)
+        if (st.crystal > 0) {
+            val absorbed = min(st.crystal, dmg)
+            st.crystal -= absorbed; dmg -= absorbed
+            st.log += if (st.crystal > 0) "Der Kristallpanzer schluckt $absorbed Schaden." else "Der Kristallpanzer zerspringt."
+        }
+        if (dmg > 0) damage(st, pet, dmg)
         st.log += "${e.name} ${label ?: "greift an"}: -$dmg"
+        if (st.ducking && level(st, MoveId.DUCK) >= 3 && e.alive) { damage(st, e, 10, "Ducken"); st.log += "${e.name} stößt sich an ${pet.name} (-10)." }
+        trapCounter(st, e, rng)
         return dmg
+    }
+
+    /** Krallenfalle: Wer angreift, bekommt den Hieb. */
+    private fun trapCounter(st: BattleState, e: Fighter, rng: Random) {
+        if (!st.trap || !e.alive || !st.pet.alive) return
+        val m = MoveId.CLAW_TRAP
+        val lvMult = when (level(st, m)) { 3 -> 1.3; 2 -> 1.15; else -> 1.0 }
+        val f = TypeChart.factor(AttackType.CLAW, e.body)
+        val d = (hitRaw(st.pet, e, (m.power * lvMult).roundToInt(), AttackType.CLAW, rng) * f * bossTaken(st, e, false)).roundToInt().coerceAtLeast(1)
+        st.trapHit = true
+        damage(st, e, d, "Falle")
+        st.log += "Die Krallenfalle schnappt zu! ${e.name}: -$d"
+    }
+
+    /** Ein Gegner gibt dem Tierchen einen Zustand. Mit Spiegelpfote trifft er sich selbst. */
+    private fun enemyStatus(st: BattleState, e: Fighter, s: Status, n: Int): Boolean {
+        if (st.mirrorPaw) {
+            st.mirrorPaw = false
+            addStatus(st, e, s, n)
+            st.log += "Die Spiegelpfote wirft ${s.label} auf ${e.name} zurück!"
+            return false
+        }
+        return addStatus(st, st.pet, s, n)
     }
 
     // ------------------------------------------------------------ Gegnerzug
@@ -632,16 +799,16 @@ object BattleEngine {
                 else enemyHit(st, e, NORMAL_POWER, k.attackType, rng)
             }
             IntentKind.TRICK -> when (k.trick) {
-                Trick.SNEEZE -> { if (!st.bonuses.accLock) { addStatus(st, pet, Status.BLIND, 3); st.log += "${e.name} niest! ${pet.name} sieht schlechter." } else st.log += "${e.name} niest, aber ${pet.name} lässt sich nicht beirren." }
+                Trick.SNEEZE -> { if (!st.bonuses.accLock) { enemyStatus(st, e, Status.BLIND, 3); st.log += "${e.name} niest! ${pet.name} sieht schlechter." } else st.log += "${e.name} niest, aber ${pet.name} lässt sich nicht beirren." }
                 Trick.CURL -> {
                     val group = if (e.elite) st.alive else listOf(e)
                     group.forEach { it.status[Status.CURLED] = 2 }
                     st.log += if (e.elite) "${e.name} rollt sich ein und schützt alle!" else "${e.name} rollt sich ein."
                 }
-                Trick.DUST_CLOUD -> if (addStatus(st, pet, Status.CONFUSED, 2)) st.log += "${e.name} wirbelt Staub auf. ${pet.name} ist verwirrt!" else st.log += "Die Staubwolke verfliegt."
+                Trick.DUST_CLOUD -> if (enemyStatus(st, e, Status.CONFUSED, 2)) st.log += "${e.name} wirbelt Staub auf. ${pet.name} ist verwirrt!" else st.log += "Die Staubwolke verfliegt."
                 Trick.WEB -> {
                     if (rng.nextInt(100) < st.bonuses.netDodge) st.log += "${pet.name} weicht dem Netz aus!"
-                    else { addStatus(st, pet, Status.NET, 1); st.log += "${e.name} wirft ein Netz! ${pet.name} klebt fest." }
+                    else { enemyStatus(st, e, Status.NET, 1); st.log += "${e.name} wirft ein Netz! ${pet.name} klebt fest." }
                 }
                 Trick.TONGUE -> when {
                     st.healPotions > 0 -> { st.healPotions--; st.log += "${e.name} schnappt sich einen Heiltrank!" }
@@ -650,11 +817,11 @@ object BattleEngine {
                 }
                 Trick.SPORE_HEAL -> {
                     st.alive.forEach { heal(st, it, (it.maxHp * 0.15).roundToInt()) }
-                    addStatus(st, pet, Status.POISON, 99)
+                    enemyStatus(st, e, Status.POISON, 99)
                     st.log += "${e.name} verteilt Sporen: Gegner heilen sich, ${pet.name} ist vergiftet."
                 }
                 Trick.DOUBLE_STING -> { enemyHit(st, e, NORMAL_POWER, k.attackType, rng, "sticht"); if (pet.alive) enemyHit(st, e, NORMAL_POWER, k.attackType, rng, "sticht nochmal") }
-                Trick.FROST_TOUCH -> { if (enemyHit(st, e, NORMAL_POWER, AttackType.FROST, rng, "berührt") > 0 && rng.nextInt(100) < 30 && addStatus(st, pet, Status.FROZEN, 1)) st.log += "${pet.name} friert ein!" }
+                Trick.FROST_TOUCH -> { if (enemyHit(st, e, NORMAL_POWER, AttackType.FROST, rng, "berührt") > 0 && rng.nextInt(100) < 30 && enemyStatus(st, e, Status.FROZEN, 1)) st.log += "${pet.name} friert ein!" }
                 Trick.MIRROR -> { e.status[Status.MIRROR] = 2; st.log += "${e.name} funkelt …" }
                 Trick.BURROW -> { e.status[Status.BURROWED] = 2; st.log += "${e.name} gräbt sich ein." }
                 Trick.STEAL -> {
@@ -662,9 +829,9 @@ object BattleEngine {
                     e.carried += amount
                     st.log += "${e.name} klaut $amount Sternenstaub!"
                 }
-                Trick.BURN_TRAIL -> { enemyHit(st, e, NORMAL_POWER, AttackType.FIRE, rng, "kriecht heran"); addStatus(st, pet, Status.BURN, 3) }
+                Trick.BURN_TRAIL -> { enemyHit(st, e, NORMAL_POWER, AttackType.FIRE, rng, "kriecht heran"); enemyStatus(st, e, Status.BURN, 3) }
                 Trick.FORGE -> { st.alive.forEach { changeStage(it, StatKind.ATK, 1) }; st.log += "${e.name} schmiedet: Angriff aller Gegner steigt!" }
-                Trick.LULLABY -> { if (addStatus(st, pet, Status.SLEEP, if (st.bonuses.shorterSleep) 1 else 2)) st.log += "${e.name} singt ein Gute-Nacht-Lied. ${pet.name} schläft ein." }
+                Trick.LULLABY -> { if (enemyStatus(st, e, Status.SLEEP, if (st.bonuses.shorterSleep) 1 else 2)) st.log += "${e.name} singt ein Gute-Nacht-Lied. ${pet.name} schläft ein." }
                 Trick.WHISPER -> {
                     st.psi = max(0f, st.psi - 3)
                     st.alive.forEach { heal(st, it, (it.maxHp * 0.10).roundToInt()) }
@@ -703,7 +870,7 @@ object BattleEngine {
                 else -> summon(st, b, EnemyKind.DUST_BUNNY, rng)
             }
             IntentKind.TRICK -> when (b.boss) {
-                BossKind.SOOT_KING -> { addStatus(st, pet, Status.SOOT, 99); st.log += "Der Rußkönig hüllt alles in Ruß! Eine Wucht-Attacke wirbelt ihn weg." }
+                BossKind.SOOT_KING -> { enemyStatus(st, b, Status.SOOT, 99); st.log += "Der Rußkönig hüllt alles in Ruß! Eine Wucht-Attacke wirbelt ihn weg." }
                 else -> enemyHit(st, b, NORMAL_POWER, type, rng)
             }
             IntentKind.BIG -> enemyHit(st, b, BIG_POWER + 4, type, rng, "setzt zum Großangriff an")
@@ -758,7 +925,7 @@ object BattleEngine {
                 if (f.isPet) d *= 1.0 - st.bonuses.burnTaken / 100.0
                 damage(st, f, d.roundToInt().coerceAtLeast(1), "Brand")
             }
-            if (f.alive && f.has(Status.POISON)) damage(st, f, (f.maxHp * 0.05).roundToInt().coerceAtLeast(1), "Gift")
+            if (f.alive && f.has(Status.POISON)) damage(st, f, (f.maxHp * (if (f.has(Status.TOXIC)) 0.10 else 0.05)).roundToInt().coerceAtLeast(1), "Gift")
             if (f.alive && st.rule == FloorRule.SPORE_AIR) damage(st, f, (f.maxHp * 0.03).roundToInt().coerceAtLeast(1), "Sporen")
             // Laufzeiten
             for (s in listOf(Status.BURN, Status.SLOW, Status.BLIND, Status.SHIELD, Status.CURLED, Status.BURROWED, Status.MIRROR)) {
@@ -767,6 +934,7 @@ object BattleEngine {
             }
             f.immune.keys.toList().forEach { s -> val n = (f.immune[s] ?: 0) - 1; if (n <= 0) f.immune.remove(s) else f.immune[s] = n }
         }
+        if (st.lavaHeart > 0) st.lavaHeart--
         if (pet.alive && st.bonuses.healPerRound > 0) heal(st, pet, (pet.maxHp * st.bonuses.healPerRound / 100.0).roundToInt().coerceAtLeast(1))
 
         // Eiszapfen-Decke

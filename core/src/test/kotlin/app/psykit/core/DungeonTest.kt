@@ -3,6 +3,7 @@ package app.psykit.core
 import app.psykit.core.battle.AttackType
 import app.psykit.core.battle.BattleEngine
 import app.psykit.core.battle.BattleState
+import app.psykit.core.battle.Combo
 import app.psykit.core.battle.Body
 import app.psykit.core.battle.EnemyKind
 import app.psykit.core.battle.EnemySpec
@@ -55,7 +56,10 @@ class DungeonTest {
 
     @Test fun catalogsAreComplete() {
         assertEquals(25, EnemyKind.entries.count { it != EnemyKind.SLIMELING })
-        assertEquals(26, MoveId.entries.size)
+        assertEquals(52, MoveId.entries.size)
+        assertEquals(20, MoveId.entries.count { it.source is app.psykit.core.battle.MoveSource.Hidden })
+        assertEquals(17, Shop.moves.size)
+        (0..19).forEach { assertNotNull(MoveId.hiddenIn(it), "Ebene $it ohne versteckte Attacke") }
         assertEquals(33, Item.entries.size)
         (1..5).forEach { w -> assertEquals(5, Item.ofWorld(w).size); assertEquals(5, EnemyKind.ofWorld(w).size) }
         assertEquals(20, Floors.all.size)
@@ -140,10 +144,16 @@ class DungeonTest {
     }
 
     @Test fun shopAndWallet() {
-        var p = pet(10).copy(stardust = 500)
-        p = Shop.buyMove(p, MoveId.SPARK_SNEEZE).state
-        assertEquals(250L, p.stardust)
-        assertTrue(MoveId.SPARK_SNEEZE in MoveId.known(p))
+        var p = pet(10).copy(stardust = 5000)
+        p = Shop.refresh(p, 100)
+        val m = Shop.offerMoves(p).first()
+        val price = Shop.price(p, m)
+        p = Shop.buyMove(p, m).state
+        assertEquals(5000L - price, p.stardust)
+        assertTrue(m in MoveId.known(p))
+        val notOffered = Shop.moves.first { it.name !in p.shopMoves && it !in MoveId.known(p) }
+        assertFalse(Shop.buyMove(p, notOffered).success)
+        p = p.copy(shopItems = p.shopItems + Item.STRAW_HAT.name)
         p = Shop.buyItem(p, Item.STRAW_HAT).state
         p = Shop.wear(p, app.psykit.core.model.Slot.HEAD, Item.STRAW_HAT)
         assertEquals(listOf(Item.STRAW_HAT), Item.active(p))
@@ -197,6 +207,10 @@ class DungeonTest {
         while (p.run != null && guard++ < 400) {
             val run = p.run!!
             when {
+                run.cards.isNotEmpty() -> {
+                    val i = run.cards.indexOfFirst { c -> MoveId.parse(c)?.let { it.type != null && it.power >= 30 } == true }
+                    p = DungeonEngine.chooseCard(p, i).state
+                }
                 run.battle != null -> p = DungeonEngine.battle(p, choose(run.battle!!)).state
                 run.bridge -> p = DungeonEngine.crossBridge(p, fast = false).state
                 run.event != null -> p = DungeonEngine.resolveEvent(p, accept = run.event != EventKind.LOCKED_CHEST && run.event != EventKind.MUSHROOM).state
@@ -239,5 +253,101 @@ class DungeonTest {
         assertTrue(rates.first() > 0.6, "Die erste Ebene muss gut schaffbar sein")
         assertTrue(rates.all { it > 0.2 }, "Keine Ebene darf praktisch unschaffbar sein")
     }
-}
 
+    // ------------------------------------------------------------ Attacken-Vielfalt
+
+    @Test fun moveLevels() {
+        assertEquals(1, MoveId.levelFor(19))
+        assertEquals(2, MoveId.levelFor(20))
+        assertEquals(3, MoveId.levelFor(60))
+        val p = pet(10).copy(moveUses = mapOf(MoveId.PAW.name to 25, MoveId.PSI_WAVE.name to 70, MoveId.DUCK.name to 0))
+        val st = BattleEngine.start(p, listOf(EnemySpec(EnemyKind.WOODLOUSE, level = 10)), FloorRule.NONE, 1, 3L)
+        assertEquals(2, BattleEngine.level(st, MoveId.PAW))
+        assertEquals(3, BattleEngine.level(st, MoveId.PSI_WAVE))
+        assertEquals(2, BattleEngine.cost(st, MoveId.PSI_WAVE))
+    }
+
+    @Test fun usesAndCombosAreCounted() {
+        val p = pet(20, listOf(MoveId.BELLY_FLOP))
+        var ps = DungeonEngine.enter(p, 0, 42L).state
+        ps = DungeonEngine.chooseRoom(ps, 0).state
+        val b = ps.run!!.battle!!
+        b.enemies.forEach { it.status[Status.FROZEN] = 3 }
+        ps = DungeonEngine.battle(ps, PetAction(MoveId.BUMP, b.enemies.first().id)).state
+        assertEquals(1, ps.moveUses[MoveId.BUMP.name])
+        val hit = ps.run?.battle?.log?.any { "Zerschmettern" in it } ?: true
+        if (hit) assertTrue(Combo.SHATTER.name in ps.combosFound)
+    }
+
+    @Test fun stunPlusClawIsSureCrit() {
+        val p = pet(20)
+        val st = BattleEngine.start(p, listOf(EnemySpec(EnemyKind.WOODLOUSE, level = 20)), FloorRule.NONE, 1, 9L)
+        val e = st.enemies.first()
+        e.status[Status.STUN] = 2
+        assertEquals(Combo.HELPLESS, BattleEngine.comboFor(MoveId.PAW, e))
+        val next = BattleEngine.playRound(st, PetAction(MoveId.PAW, e.id))
+        if (next.hits.any { it.target == e.id && it.amount > 0 }) assertTrue(Combo.HELPLESS.name in next.combos)
+    }
+
+    @Test fun cardsAreFairAndHitWeakness() {
+        val p = pet(15)
+        for (seed in 0 until 200L) {
+            val f = Floors.get((seed % 19).toInt())
+            val cards = DungeonEngine.rollCards(p, f, Random(seed)).mapNotNull { MoveId.parse(it) }
+            assertEquals(3, cards.distinct().size)
+            assertTrue(cards.any { it.type == DungeonEngine.weakness(f) }, "Keine Karte trifft die Schwäche auf ${f.name}")
+            assertTrue(cards.none { it.source is app.psykit.core.battle.MoveSource.Hidden || it in MoveId.equipped(p) })
+        }
+    }
+
+    @Test fun chosenCardJoinsNextFight() {
+        var p = DungeonEngine.enter(pet(15), 0, 7L).state
+        p = p.copy(run = p.run!!.copy(cards = listOf(MoveId.BLIZZARD.name, MoveId.PAW.name, MoveId.HISS.name)))
+        assertFalse(DungeonEngine.chooseRoom(p, 0).success)
+        p = DungeonEngine.chooseCard(p, 0).state
+        assertEquals(MoveId.BLIZZARD.name, p.run!!.fundMove)
+        p = DungeonEngine.chooseRoom(p, 0).state
+        assertTrue(MoveId.BLIZZARD in p.run!!.battle!!.moves)
+        assertFalse(MoveId.BLIZZARD.name in p.ownedMoves)
+        val skip = DungeonEngine.chooseCard(DungeonEngine.enter(pet(15), 0, 7L).state.let { it.copy(run = it.run!!.copy(cards = listOf("PAW"))) }, -1).state
+        assertEquals(DungeonEngine.SKIP_CARD_DUST, skip.run!!.dust)
+    }
+
+    @Test fun hiddenMoveGuaranteedOnThirdGuardWin() {
+        val hidden = MoveId.hiddenIn(0)!!
+        var p = pet(30).copy(floorWins = mapOf("0" to 2))
+        p = DungeonEngine.enter(p, 0, 11L).state
+        val last = p.run!!.columns.size - 1
+        p = p.copy(run = p.run!!.copy(step = last))
+        p = DungeonEngine.chooseRoom(p, 0).state
+        assertEquals(RoomType.GUARD, p.run!!.room)
+        var guard = 0
+        while (p.run?.battle != null && guard++ < 50) p = DungeonEngine.battle(p, choose(p.run!!.battle!!)).state
+        assertEquals(3, p.floorWins["0"])
+        assertTrue(hidden.name in p.ownedMoves, "Versteckte Attacke fehlt nach dem dritten Sieg")
+        assertNull(Shop.moves.firstOrNull { it == hidden })
+    }
+
+    @Test fun shopRotatesDaily() {
+        val p = pet(10).copy(stardust = 1000)
+        val a = Shop.refresh(p, 201)
+        val b = Shop.refresh(p, 202)
+        assertEquals(Shop.OFFER_MOVES, a.shopMoves.size)
+        assertTrue(a.shopMoves != b.shopMoves)
+        assertEquals(a, Shop.refresh(a, 201))
+        assertTrue(a.shopDeal in a.shopMoves)
+        val deal = MoveId.parse(a.shopDeal!!)!!
+        assertEquals(Shop.price(deal) * 3 / 4, Shop.price(a, deal))
+        assertTrue(a.shopItems.size <= Shop.OFFER_ITEMS)
+        val r = Shop.reroll(a, 201)
+        assertTrue(r.success)
+        assertEquals(970L, r.state.stardust)
+        assertFalse(Shop.reroll(r.state, 201).success)
+        assertTrue(Shop.canReroll(Shop.refresh(r.state, 202), 202))
+        // Montag: zusätzlich eine teure Attacke
+        val monday = (200L..210L).first { Shop.isHighlightDay(it) }
+        val m = Shop.refresh(p, monday)
+        assertEquals(Shop.OFFER_MOVES + 1, m.shopMoves.size)
+        assertTrue(m.shopMoves.any { Shop.price(MoveId.parse(it)!!) >= Shop.HIGHLIGHT_PRICE })
+    }
+}

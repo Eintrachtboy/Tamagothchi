@@ -1,21 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- App-Icon „Psi-Pfote“: Pfote mit Herz in einer Psi-Spirale -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- Ohren -->
-    <path android:fillColor="#F7A8D8" android:pathData="M33,46 L36,24 L50,38 Z" />
-    <path android:fillColor="#F7A8D8" android:pathData="M75,46 L72,24 L58,38 Z" />
-    <path android:fillColor="#FFD9EE" android:pathData="M37,40 L38.5,30 L45,37 Z" />
-    <path android:fillColor="#FFD9EE" android:pathData="M71,40 L69.5,30 L63,37 Z" />
-    <!-- Kopf -->
-    <path android:fillColor="#F7A8D8" android:pathData="M54,32 C70,32 80,43 80,57 C80,72 68,80 54,80 C40,80 28,72 28,57 C28,43 38,32 54,32 Z" />
-    <!-- Mondsichel -->
-    <path android:fillColor="#FFD36E" android:pathData="M54,37 C49,37 46,41 46,45 C46,49 49,52 53,52 C50,50 49,47 50,44 C51,41 54,39 57,39 C56,38 55,37 54,37 Z" />
-    <!-- Augen -->
-    <path android:fillColor="#5B3FA8" android:pathData="M42,52 C46,52 48,55 48,59 C48,63 46,66 42,66 C38,66 36,63 36,59 C36,55 38,52 42,52 Z" />
-    <path android:fillColor="#5B3FA8" android:pathData="M66,52 C70,52 72,55 72,59 C72,63 70,66 66,66 C62,66 60,63 60,59 C60,55 62,52 66,52 Z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M43.5,54 a2.2,2.2 0 1,0 0.1,0 Z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M67.5,54 a2.2,2.2 0 1,0 0.1,0 Z" />
-    <!-- Mund -->
-    <path android:strokeColor="#9C4A7E" android:strokeWidth="1.6" android:fillColor="#00000000"
-        android:pathData="M50,69 Q52,71.5 54,69 Q56,71.5 58,69" />
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="0.78" android:scaleY="0.78">
+        <!-- Spirale -->
+        <path android:strokeColor="#B3F78FC6" android:strokeWidth="3" android:strokeLineCap="round" android:fillColor="#00000000"
+            android:pathData="M54,24 A30,30 0 1,1 28,69" />
+        <path android:strokeColor="#B3C9A8FF" android:strokeWidth="2.4" android:strokeLineCap="round" android:fillColor="#00000000"
+            android:pathData="M32,60 A22,22 0 1,1 62,80" />
+        <!-- Pfote -->
+        <path android:fillColor="#FFE7F4" android:pathData="M41,64 A13,11 0 1,0 67,64 A13,11 0 1,0 41,64 Z" />
+        <group android:pivotX="38" android:pivotY="50" android:rotation="-20">
+            <path android:fillColor="#FFE7F4" android:pathData="M32.5,50 A5.5,7 0 1,0 43.5,50 A5.5,7 0 1,0 32.5,50 Z" />
+        </group>
+        <path android:fillColor="#FFE7F4" android:pathData="M42.5,42 A5.5,7.5 0 1,0 53.5,42 A5.5,7.5 0 1,0 42.5,42 Z" />
+        <path android:fillColor="#FFE7F4" android:pathData="M54.5,42 A5.5,7.5 0 1,0 65.5,42 A5.5,7.5 0 1,0 54.5,42 Z" />
+        <group android:pivotX="70" android:pivotY="50" android:rotation="20">
+            <path android:fillColor="#FFE7F4" android:pathData="M64.5,50 A5.5,7 0 1,0 75.5,50 A5.5,7 0 1,0 64.5,50 Z" />
+        </group>
+        <!-- Herz -->
+        <path android:fillColor="#F78FC6" android:pathData="M54,58 c-3,-4 -9,-1 -6,4 l6,6 6,-6 c3,-5 -3,-8 -6,-4z" />
+        <!-- Sterne -->
+        <path android:fillColor="#FFD36E" android:pathData="M84,24 l1.5,3.5 3.5,1.5 -3.5,1.5 -1.5,3.5 -1.5,-3.5 -3.5,-1.5 3.5,-1.5z" />
+        <path android:fillColor="#FFD36E" android:pathData="M24,84 l1.2,2.8 2.8,1.2 -2.8,1.2 -1.2,2.8 -1.2,-2.8 -2.8,-1.2 2.8,-1.2z" />
+    </group>
 </vector>

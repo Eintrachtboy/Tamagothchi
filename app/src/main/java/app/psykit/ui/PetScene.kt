@@ -25,6 +25,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,6 +60,39 @@ private fun skyColors(phase: DayPhase) = when (phase) {
     DayPhase.DAY -> listOf(Color(0xFFA9DDFB), Color(0xFFE9F7FF))
     DayPhase.EVENING -> listOf(Color(0xFFB98BD9), Color(0xFFFFC4B0))
     DayPhase.NIGHT -> listOf(Color(0xFF151A3D), Color(0xFF3B2A63))
+}
+
+/** Bildmaße und wie weit unten (Anteil der Höhe) der unterste sichtbare Pixel liegt. */
+private data class Footprint(val w: Int, val h: Int, val bottom: Float)
+
+private fun footprintOf(sprite: Sprite): Footprint? = runCatching {
+    val anim = sprite.animated
+    if (anim != null) {
+        var w = 0; var h = 0
+        val bmp = ImageDecoder.decodeBitmap(ImageDecoder.createSource(anim)) { d, info, _ ->
+            d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            w = info.size.width; h = info.size.height
+            val m = maxOf(w, h)
+            if (m > 256) d.setTargetSize((w * 256f / m).toInt().coerceAtLeast(1), (h * 256f / m).toInt().coerceAtLeast(1))
+        }
+        Footprint(w, h, opaqueBottom(bmp))
+    } else {
+        val img = sprite.image ?: return null
+        Footprint(img.width, img.height, opaqueBottom(img.asAndroidBitmap()))
+    }
+}.getOrNull()
+
+/** Anteil der Höhe bis zur untersten Zeile mit sichtbaren Pixeln (1 = ganz unten). */
+private fun opaqueBottom(bmp: android.graphics.Bitmap): Float {
+    val w = bmp.width; val h = bmp.height
+    if (w == 0 || h == 0) return 1f
+    if (!bmp.hasAlpha()) return 1f
+    val row = IntArray(w)
+    for (y in h - 1 downTo 0) {
+        bmp.getPixels(row, 0, w, 0, y, w, 1)
+        if (row.any { (it ushr 24) > 40 }) return (y + 1f) / h
+    }
+    return 1f
 }
 
 @Composable
@@ -171,14 +206,25 @@ fun PetScene(
                 else -> 18f
             }
             val sink = if (floating && (mood == Mood.SAD || mood == Mood.SICK)) 14f else 0f
-            val sway = when { sleeping -> 1f; mood == Mood.HAPPY -> 4f; else -> 2.5f }
+            val sway = when { !floating -> 0f; sleeping -> 1f; mood == Mood.HAPPY -> 4f; else -> 2.5f }
+            // Auf dem Boden: Figur so weit absenken, dass ihr unterster sichtbarer Punkt den Boden berührt
+            // (eigene Bilder haben oft unten einen leeren Rand).
+            val footprint by produceState<Footprint?>(null, custom.image, custom.animated) {
+                value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { footprintOf(custom) }
+            }
             val figure = Modifier
                 .fillMaxSize()
                 .padding(start = 60.dp, end = 60.dp, top = 40.dp, bottom = if (floating) 14.dp else 8.dp)
                 .graphicsLayer {
                     val jump = if (hop.value < 1f) sin(hop.value * PI.toFloat()) else 0f
                     transformOrigin = TransformOrigin(0.5f, 1f)
-                    translationY = -bob * amp + sink - jump * jumpHeight
+                    val fp = footprint
+                    val ground = if (!floating && fp != null && fp.w > 0 && fp.h > 0) {
+                        val scale = kotlin.math.min(size.width / fp.w, size.height / fp.h)
+                        val imgH = fp.h * scale
+                        ((size.height - imgH) / 2f + imgH * (1f - fp.bottom)).coerceAtLeast(0f)
+                    } else 0f
+                    translationY = -bob * amp + sink - jump * jumpHeight + ground
                     translationX = if (shake.value < 1f) sin(shake.value * 6f * PI.toFloat()) * 14f * (1f - shake.value) else 0f
                     // Atmen: leicht strecken und stauchen
                     val b = breath * (if (sleeping) 0.035f else if (floating) 0.02f else 0.03f)
@@ -206,8 +252,8 @@ fun PetScene(
                 Image(bitmap = custom.image, contentDescription = "Dein Tierchen", contentScale = ContentScale.Fit, modifier = figure)
             }
             if (dressed != null && (dressed.head != null || dressed.eyes != null)) {
-                val iw = custom.image?.width ?: 0
-                val ih = custom.image?.height ?: 0
+                val iw = custom.image?.width ?: footprint?.w ?: 0
+                val ih = custom.image?.height ?: footprint?.h ?: 0
                 Canvas(figure) { drawWear(dressed, imageHead(iw, ih, dressed.anchor)) }
             }
         } else {

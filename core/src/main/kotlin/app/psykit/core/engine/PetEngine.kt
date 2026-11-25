@@ -43,9 +43,9 @@ object PetEngine {
     private const val HAPPY_ASLEEP = 1f
     private const val HYGIENE_BASE = 2f
     private const val HYGIENE_PER_POOP = 3f
-    private const val ENERGY_AWAKE_DAY = 5f
+    private const val ENERGY_AWAKE_DAY = 4f
     private const val ENERGY_AWAKE_NIGHT = 9f
-    private const val ENERGY_SLEEP = 20f
+    private const val ENERGY_SLEEP = 40f
     private const val POOP_EVERY_MIN = 180f
     private const val MAX_POOPS = 3
 
@@ -303,7 +303,7 @@ object PetEngine {
         if (!night && s.energy > 80f && !hummed) return ActionResult(s, "${s.name} ist noch gar nicht müde und strampelt die Decke weg.", false, Reaction.ANNOYED)
         var ns = s.copy(sleeping = true)
         if (hummed) {
-            ns = kind(ns, 1f).copy(energy = ns.energy + 10f, happiness = ns.happiness + 3f)
+            ns = kind(ns, 1f).copy(energy = ns.energy + 15f, happiness = ns.happiness + 3f)
             return ActionResult(clamp(ns), "Bei deinem Summen schlummert ${s.name} sofort ein.", reaction = Reaction.SLEEPY)
         }
         return ActionResult(ns, "Gute Nacht, ${s.name}. Licht aus!", reaction = Reaction.SLEEPY)

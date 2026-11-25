@@ -211,6 +211,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     fun buyItem(i: Item) = act { s, _ -> Shop.buyItem(s, i) }
     fun buyPotion(p: Potion) = act { s, _ -> Shop.buyPotion(s, p) }
     fun buyKey() = act { s, _ -> Shop.buyKey(s) }
+    fun drinkEnergy() = act { s, _ -> Shop.drinkEnergy(s) }
     fun sellBerries(n: Int) = act { s, _ -> PetEngine.sellBerries(s, n) }
     fun wear(slot: Slot, item: Item?) = repo.update { s, _ -> Shop.wear(s, slot, item) to Unit }
     fun setCharm(item: Item?) = repo.update { s, _ -> Shop.setCharm(s, item) to Unit }
@@ -231,7 +232,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _floating = MutableStateFlow(packs.floating)
     val floating: StateFlow<Boolean> = _floating
-    fun setFloating(on: Boolean) { packs.floating = on; _floating.value = on }
+    fun setFloating(on: Boolean) { packs.setFloatingByUser(on); _floating.value = on }
 
     private fun reloadSprites() {
         sprites = SpriteStore(getApplication(), repo.currentId.value)

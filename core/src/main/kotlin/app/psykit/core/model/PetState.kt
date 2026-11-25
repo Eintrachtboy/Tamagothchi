@@ -70,6 +70,9 @@ data class PetState(
     val keySteps: Long = 0,
     val healPotions: Int = 0,
     val psiPotions: Int = 0,
+    // Energiedrinks: höchstens ein paar pro Tag
+    val energyDrinkDay: Long = -1,
+    val energyDrinksToday: Int = 0,
     // Attacken: gekauft/gefunden und die 4 ausgerüsteten (leer = Standard)
     val ownedMoves: List<String> = emptyList(),
     val equippedMoves: List<String> = emptyList(),

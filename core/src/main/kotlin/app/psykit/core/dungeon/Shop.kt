@@ -18,9 +18,56 @@ object Shop {
 
     fun price(m: MoveId) = (m.source as? MoveSource.Shop)?.price ?: 0
 
+    // ------------------------------------------------------------ Tagesangebot
+
+    const val OFFER_MOVES = 4
+    const val OFFER_ITEMS = 3
+    const val DEAL_PCT = 25
+    const val REROLL_PRICE = 30
+    const val HIGHLIGHT_PRICE = 400
+
+    /** Montag (Tag 0 = Donnerstag, 1.1.1970). */
+    fun isHighlightDay(day: Long) = Math.floorMod(day + 3, 7L) == 0L
+
+    /** Preis heute (mit Angebot −25 %). */
+    fun price(p: PetState, m: MoveId): Int {
+        val base = price(m)
+        return if (m.name == p.shopDeal) base * (100 - DEAL_PCT) / 100 else base
+    }
+
+    fun offerMoves(p: PetState): List<MoveId> = p.shopMoves.mapNotNull { MoveId.parse(it) }
+    fun offerItems(p: PetState): List<Item> = p.shopItems.mapNotNull { Item.parse(it) }
+
+    private fun roll(p: PetState, day: Long, salt: Int): PetState {
+        val rng = kotlin.random.Random(p.bornAt * 31 + day * 7919 + salt)
+        val known = MoveId.known(p).toSet()
+        val open = moves.filter { it !in known }
+        val picked = mutableListOf<MoveId>()
+        if (isHighlightDay(day)) open.filter { price(it) >= HIGHLIGHT_PRICE }.randomOrNull(rng)?.let { picked += it }
+        picked += open.filter { it !in picked }.shuffled(rng).take(OFFER_MOVES)
+        val deal = picked.randomOrNull(rng)
+        val goods = items.filter { it.name !in p.items }.shuffled(rng).take(OFFER_ITEMS)
+        return p.copy(shopDay = day, shopMoves = picked.map { it.name }, shopItems = goods.map { it.name }, shopDeal = deal?.name)
+    }
+
+    /** Neues Tagesangebot, wenn ein neuer Tag begonnen hat. */
+    fun refresh(p: PetState, day: Long): PetState =
+        if (p.shopDay == day) p else roll(p, day, 0).copy(shopRerolled = false)
+
+    fun canReroll(p: PetState, day: Long) = !(p.shopDay == day && p.shopRerolled)
+
+    /** Einmal am Tag für 30 ✨ neu würfeln. */
+    fun reroll(p: PetState, day: Long): ActionResult {
+        if (!canReroll(p, day)) return ActionResult(p, "Heute wurde schon neu gewürfelt. Morgen gibt es ein neues Angebot.", false)
+        if (p.stardust < REROLL_PRICE) return ActionResult(p, "Dafür fehlen noch ${REROLL_PRICE - p.stardust} ✨.", false)
+        val ns = roll(p.copy(stardust = p.stardust - REROLL_PRICE), day, 1).copy(shopRerolled = true)
+        return ActionResult(ns, "🎲 Der Laden hat neue Ware ausgelegt.", reaction = Reaction.HAPPY)
+    }
+
     fun buyMove(p: PetState, m: MoveId): ActionResult {
-        val price = price(m)
-        if (price <= 0) return ActionResult(p, "Diese Attacke gibt es nicht im Laden.", false)
+        if (price(m) <= 0) return ActionResult(p, "Diese Attacke gibt es nicht im Laden.", false)
+        if (m.name !in p.shopMoves) return ActionResult(p, "${m.label} ist heute nicht im Angebot.", false)
+        val price = price(p, m)
         if (m in MoveId.known(p)) return ActionResult(p, "${p.name} kann ${m.label} schon.", false)
         if (p.stardust < price) return ActionResult(p, "Dafür fehlen noch ${price - p.stardust} ✨.", false)
         var ns = p.copy(stardust = p.stardust - price, ownedMoves = p.ownedMoves + m.name)
@@ -33,6 +80,7 @@ object Shop {
     fun buyItem(p: PetState, it: Item): ActionResult {
         if (!it.inShop) return ActionResult(p, "Das gibt es nur im Dungeon.", false)
         if (it.name in p.items) return ActionResult(p, "Hast du schon.", false)
+        if (it.name !in p.shopItems) return ActionResult(p, "${it.label} ist heute nicht im Angebot.", false)
         if (p.stardust < it.price) return ActionResult(p, "Dafür fehlen noch ${it.price - p.stardust} ✨.", false)
         return ActionResult(p.copy(stardust = p.stardust - it.price, items = p.items + it.name), "${it.label} gekauft!", reaction = Reaction.HAPPY)
     }

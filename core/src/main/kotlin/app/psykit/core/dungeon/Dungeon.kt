@@ -1,5 +1,6 @@
 package app.psykit.core.dungeon
 
+import app.psykit.core.battle.AttackType
 import app.psykit.core.battle.BattleEngine
 import app.psykit.core.battle.BattleState
 import app.psykit.core.battle.BossKind
@@ -7,6 +8,7 @@ import app.psykit.core.battle.EnemyKind
 import app.psykit.core.battle.EnemySpec
 import app.psykit.core.battle.FloorRule
 import app.psykit.core.battle.MoveId
+import app.psykit.core.battle.MoveSource
 import app.psykit.core.battle.Outcome
 import app.psykit.core.battle.PetAction
 import app.psykit.core.battle.Potion
@@ -114,6 +116,10 @@ data class DungeonRun(
     val bridge: Boolean = false,
     val note: String = "",
     val cleared: Boolean = false,
+    /** Fundattacke für diesen Lauf (5. Platz). */
+    val fundMove: String? = null,
+    /** Drei Fundkarten zur Auswahl nach einem gewonnenen Kampf. */
+    val cards: List<String> = emptyList(),
 )
 
 /** Ein abgeschlossener Lauf, zum Anzeigen. */
@@ -207,6 +213,7 @@ object DungeonEngine {
     fun chooseRoom(p: PetState, option: Int): ActionResult {
         val run = p.run ?: return ActionResult(p, "Kein Dungeon-Lauf aktiv.", false)
         if (run.room != null || run.bridge) return ActionResult(p, "Erst diesen Raum abschließen.", false)
+        if (run.cards.isNotEmpty()) return ActionResult(p, "Erst eine Fundattacke wählen.", false)
         val type = choices(run).getOrNull(option) ?: return ActionResult(p, "Diesen Weg gibt es nicht.", false)
         val floor = Floors.get(run.floor)
         val energyCost = ROOM_ENERGY * (if (floor.rule == FloorRule.HEAT || floor.rule == FloorRule.FORGE_HEAT) 2 else 1)
@@ -222,6 +229,7 @@ object DungeonEngine {
                     p, specs, floor.rule, w, rng.nextLong(), hp = run.hp,
                     healPotions = run.healPotions, psiPotions = run.psiPotions,
                     startNet = floor.rule == FloorRule.WEBS && run.step % 2 == 1,
+                    fundMove = run.fundMove?.let { MoveId.parse(it) },
                 )
                 r = r.copy(battle = battle)
             }
@@ -304,6 +312,9 @@ object DungeonEngine {
         // Nach einem gewonnenen Kampf kurz verschnaufen
         if (nb.outcome == Outcome.WON) r = r.copy(hp = min(r.maxHp, r.hp + (r.maxHp * AFTER_FIGHT_HEAL).roundToInt()))
         var ns = p.copy(run = r)
+        // Attacken-Stufen und entdeckte Kombos zählen sofort, auch wenn der Lauf verloren geht
+        nb.usedMove?.let { m -> ns = ns.copy(moveUses = ns.moveUses + (m.name to (ns.moveUses[m.name] ?: 0) + 1)) }
+        if (nb.combos.isNotEmpty()) ns = ns.copy(combosFound = (ns.combosFound + nb.combos).distinct())
         if (nb.outcome == null) return ActionResult(ns, nb.log.lastOrNull() ?: "")
         if (nb.outcome == Outcome.LOST) {
             return finish(ns.copy(run = r.copy(dust = max(0, r.dust - nb.stolenDust))), aborted = false, lost = true, note = "${p.name} wurde besiegt …")
@@ -338,15 +349,28 @@ object DungeonEngine {
         }
         if (r.room == RoomType.ELITE && floor.world == 3 && MoveId.TIGER_LEAP.name !in p.ownedMoves && rng.nextInt(100) < 25) newMoves += MoveId.TIGER_LEAP.name
         if (r.room == RoomType.GUARD && rng.nextInt(100) < 50) loot += rollItem(floor.world, rng, boss = false).name
+        // Versteckte Attacke dieser Ebene: 40 % pro Sieg über Wächter/Boss, spätestens beim dritten Sieg
+        if (r.room == RoomType.GUARD || r.room == RoomType.BOSS) {
+            val key = floor.index.toString()
+            val wins = (ns.floorWins[key] ?: 0) + 1
+            ns = ns.copy(floorWins = ns.floorWins + (key to wins))
+            val hidden = MoveId.hiddenIn(floor.index)
+            if (hidden != null && hidden.name !in p.ownedMoves && hidden.name !in r.moves && hidden.name !in newMoves &&
+                (wins >= 3 || rng.nextInt(100) < HIDDEN_CHANCE)
+            ) newMoves += hidden.name
+        }
+        val cards = if (r.room == RoomType.FIGHT || r.room == RoomType.ELITE) rollCards(p, floor, rng, r.fundMove) else emptyList()
         val kills = nb.defeated.size + (if (nb.bossDefeated) 1 else 0)
         r = r.copy(
             dust = r.dust + max(0, dust), exp = r.exp + exp, items = r.items + loot, moves = r.moves + newMoves,
-            defeated = r.defeated + kills,
+            defeated = r.defeated + kills, cards = cards,
             note = buildString {
                 append("Gewonnen! +${max(0, dust)} Sternenstaub, +$exp EP.")
                 if (nb.stolenDust > 0) append(" (${nb.stolenDust} wurden geklaut.)")
                 loot.mapNotNull { Item.parse(it) }.forEach { append(" Fund: ${it.label} (${it.rarity.label}).") }
-                newMoves.mapNotNull { MoveId.parse(it) }.forEach { append(" Neue Attacke: ${it.label}!") }
+                newMoves.mapNotNull { MoveId.parse(it) }.forEach {
+                    append(if (it.source is MoveSource.Hidden) " Versteckte Attacke entdeckt: ${it.label}!" else " Neue Attacke: ${it.label}!")
+                }
             },
         )
         ns = PetEngine.progress(ns, Quest.DEFEAT, kills)
@@ -354,6 +378,68 @@ object DungeonEngine {
         r = completeRoom(r).copy(bridge = bridge)
         if (r.cleared) return finish(ns.copy(run = r), aborted = false, note = r.note)
         return ActionResult(ns.copy(run = r), r.note, reaction = Reaction.JUMP)
+    }
+
+    // ------------------------------------------------------------ Fundattacken
+
+    const val HIDDEN_CHANCE = 40
+    const val SKIP_CARD_DUST = 10
+
+    /** 0 = gewöhnlich (Laden), 1 = selten (Training), 2 = episch (Boss-Beute). */
+    fun cardRarity(m: MoveId): Int = when (m.source) {
+        is MoveSource.Training -> 1
+        is MoveSource.Drop -> 2
+        else -> 0
+    }
+
+    fun cardRarityLabel(m: MoveId) = listOf("Gewöhnlich", "Selten", "Episch")[cardRarity(m)]
+
+    private val cardPools: List<List<MoveId>> by lazy {
+        listOf(
+            MoveId.entries.filter { it.source is MoveSource.Shop },
+            MoveId.entries.filter { it.source is MoveSource.Training },
+            MoveId.entries.filter { it.source is MoveSource.Drop },
+        )
+    }
+
+    /** Die Schwäche einer Welt: dagegen hilft mindestens eine Karte. */
+    fun weakness(floor: Floor): AttackType =
+        if (floor.isDepth) AttackType.entries[(floor.index * 7) % AttackType.entries.size] else World.of(floor.world).boss.weakness
+
+    fun rollCards(p: PetState, floor: Floor, rng: Random, current: String? = null): List<String> {
+        val blocked = (MoveId.equipped(p).map { it.name } + listOfNotNull(current)).toSet()
+        val picked = mutableListOf<MoveId>()
+        repeat(3) {
+            val r = rng.nextInt(100)
+            val tier = when { r < 60 -> 0; r < 90 -> 1; else -> 2 }
+            val options = (tier downTo 0).asSequence()
+                .map { t -> cardPools[t].filter { it.name !in blocked && it !in picked } }
+                .firstOrNull { it.isNotEmpty() } ?: return@repeat
+            picked += options.random(rng)
+        }
+        val weak = weakness(floor)
+        if (picked.isNotEmpty() && picked.none { it.type == weak }) {
+            val i = rng.nextInt(picked.size)
+            val tier = cardRarity(picked[i])
+            val options = (tier downTo 0).asSequence()
+                .map { t -> cardPools[t].filter { it.type == weak && it.name !in blocked && it !in picked } }
+                .firstOrNull { it.isNotEmpty() }
+            if (options != null) picked[i] = options.random(rng)
+        }
+        return picked.map { it.name }
+    }
+
+    /** Fundkarte wählen (Index), -1 = überspringen für Sternenstaub. */
+    fun chooseCard(p: PetState, index: Int): ActionResult {
+        val run = p.run ?: return ActionResult(p, "", false)
+        if (run.cards.isEmpty()) return ActionResult(p, "", false)
+        if (index < 0) {
+            val note = "Karten liegen gelassen: +$SKIP_CARD_DUST Sternenstaub."
+            return ActionResult(p.copy(run = run.copy(cards = emptyList(), dust = run.dust + SKIP_CARD_DUST, note = note)), note)
+        }
+        val m = run.cards.getOrNull(index)?.let { MoveId.parse(it) } ?: return ActionResult(p, "", false)
+        val note = if (run.fundMove != null) "${m.label} ersetzt ${MoveId.parse(run.fundMove)?.label ?: "die alte Fundattacke"}." else "Fundattacke für diesen Lauf: ${m.label}."
+        return ActionResult(p.copy(run = run.copy(cards = emptyList(), fundMove = m.name, note = note)), note, reaction = Reaction.JUMP)
     }
 
     /** Kampf-Ergebnis gesehen, zurück zur Karte (nur fürs Anzeigen, Belohnung gibt es sofort). */

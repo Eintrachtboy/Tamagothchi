@@ -129,15 +129,6 @@ class PetEngineTest {
         assertEquals("Ganz nah dran! Eher seitlich.", Zone.HEAD.hintTowards(Zone.EARS))
     }
 
-    @Test fun scoopingPoopFillsCompost() {
-        var s = hatched(at(12)).copy(poops = 3)
-        val r1 = PetEngine.scoopPoop(s)
-        assertEquals(1, r1.state.compost)
-        assertTrue(r1.message.contains("1/3"))
-        s = PetEngine.scoopPoop(PetEngine.scoopPoop(r1.state).state).state
-        assertEquals(0, s.poops); assertEquals(1, s.fertilizer); assertEquals(0, s.compost)
-    }
-
     @Test fun walksMakeDirtyAndCleaningHelps() {
         var s = PetEngine.addSteps(hatched(at(12)), 3200)
         assertEquals(2, s.dirt)

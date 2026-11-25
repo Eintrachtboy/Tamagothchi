@@ -281,15 +281,6 @@ object PetEngine {
         return ActionResult(clamp(st.copy(happiness = s.happiness + 1f)), "${zone.label}: ganz nett, aber nicht die Lieblingsstelle. $hint", reaction = Reaction.HAPPY)
     }
 
-    /** Häufchen mit der Schaufel wegräumen, mit Rückmeldung zum Kompost. */
-    fun scoopPoop(s: PetState): ActionResult {
-        if (s.poops <= 0) return ActionResult(s, "Hier liegt nichts mehr.", false)
-        val ns = removePoop(s)
-        val msg = if (ns.fertilizer > s.fertilizer) "Ab in den Kompost! 3 Häufchen sind jetzt 1 Dünger für den Garten 🧪."
-        else "Ab in den Kompost (${ns.compost}/${GardenEngine.COMPOST_PER_FERTILIZER}). Bei ${GardenEngine.COMPOST_PER_FERTILIZER} gibt es Dünger."
-        return ActionResult(ns, msg)
-    }
-
     // ---------------- Putzen ----------------
 
     /** Anzahl Schmutzflecken, die beim Putzen angezeigt werden. */

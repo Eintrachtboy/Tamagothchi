@@ -52,6 +52,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -366,7 +367,10 @@ private fun BubblesGame(onDone: (Int, Int, Int) -> Unit) {
         Canvas(
             Modifier
                 .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(Color(0xFFA9DDFB), Color(0xFFE9F7FF))), RoundedCornerShape(20.dp))
+                // Blasen nur im blauen Spielfeld zeigen: vorher waren sie auch unter dem Feld (über der Navigationsleiste)
+                // und über dem Feld (über der Punkteanzeige) zu sehen, ließen sich dort aber nicht antippen
+                .clip(RoundedCornerShape(20.dp))
+                .background(Brush.verticalGradient(listOf(Color(0xFFA9DDFB), Color(0xFFE9F7FF))))
                 .pointerInput(Unit) {
                     // Platzen schon beim Berühren (nicht erst beim Loslassen), auch mehrere Finger
                     awaitPointerEventScope {
@@ -375,12 +379,19 @@ private fun BubblesGame(onDone: (Int, Int, Int) -> Unit) {
                             ev.changes.filter { it.pressed && !it.previousPressed }.forEach { ch ->
                                 val p = ch.position
                                 val t = frame / 1e9f
-                                // gleiche Position wie gezeichnet (inkl. Seitwärts-Wackeln), großzügige Trefferfläche
-                                val hit = bubbles.minByOrNull { b ->
-                                    (Offset(b.x + kotlin.math.sin(t * 2f + b.phase) * b.r * 0.25f, b.y) - p).getDistance() / b.r
-                                }?.takeIf { b ->
-                                    (Offset(b.x + kotlin.math.sin(t * 2f + b.phase) * b.r * 0.25f, b.y) - p).getDistance() < b.r * 1.4f
+                                // gleiche Position wie gezeichnet (inkl. Seitwärts-Wackeln), großzügige Trefferfläche.
+                                // Das Bild auf dem Display hinkt ein paar Bildchen hinterher, und schnelle Blasen sind dann
+                                // schon ein Stück weiter oben: darum zählt auch die Strecke, die die Blase gerade zurückgelegt hat.
+                                fun dist(b: Bubble): Float {
+                                    val cx = b.x + kotlin.math.sin(t * 2f + b.phase) * b.r * 0.25f
+                                    val dy = when {
+                                        p.y < b.y -> b.y - p.y
+                                        p.y > b.y + b.v * 0.12f -> p.y - (b.y + b.v * 0.12f)
+                                        else -> 0f
+                                    }
+                                    return kotlin.math.hypot(cx - p.x, dy) / b.r
                                 }
+                                val hit = bubbles.minByOrNull { dist(it) }?.takeIf { dist(it) < 1.4f }
                                 if (hit != null && timeLeft > 0f) {
                                     bubbles.remove(hit); popped++
                                     pops += Offset(hit.x, hit.y) to System.currentTimeMillis()

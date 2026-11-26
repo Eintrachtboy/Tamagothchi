@@ -106,6 +106,7 @@ fun PetScreen(vm: PetViewModel) {
     val floating by vm.floating.collectAsState()
     val spriteVersion by vm.spriteVersion.collectAsState()
     val headPoint by vm.headPoint.collectAsState()
+    val saveLocked by vm.currentLocked.collectAsState()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -489,6 +490,8 @@ fun PetScreen(vm: PetViewModel) {
     if (showDungeon) DungeonDialog(vm, s, sprite, onClose = { showDungeon = false })
     if (showShop) ShopDialog(vm, s, onClose = { showShop = false })
     if (showBook) CollectionDialog(vm, s, sprite, onClose = { showBook = false })
+    // Spielstand nicht lesbar: Pflege sperren, bis ausdrücklich entschieden wurde (Befund 21)
+    if (saveLocked) RecoveryScreen(vm, onOtherPet = { showPets = true })
 }
 
 private fun gameInfo(k: GameKind) = when (k) {

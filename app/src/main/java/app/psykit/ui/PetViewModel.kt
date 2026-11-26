@@ -288,6 +288,26 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         reloadSprites()
     }
 
+    // ---------- Spielstandschutz (Befund 21) ----------
+    /** true, solange der Spielstand des aktiven Tierchens nicht gelesen werden kann. */
+    val currentLocked: StateFlow<Boolean> = repo.currentLocked
+    fun brokenPets() = repo.brokenPets()
+    fun backups() = repo.backups()
+    fun currentRaw(): String? = repo.currentRaw()
+
+    fun retryLoad(): Boolean = repo.retry().also { ok ->
+        reloadSprites()
+        _message.value = if (ok) "Der Spielstand ist wieder da." else "Der Spielstand ist noch nicht lesbar. Er bleibt gesichert."
+    }
+
+    /** Neues Ei nach ausdrücklicher Wahl. Die Sicherung des alten Stands bleibt erhalten. */
+    fun startOver(name: String) = reset(name)
+
+    fun restoreBackup(key: String): Boolean = repo.restoreBackup(key).also { ok ->
+        if (ok) { reloadSprites(); _message.value = "Sicherung als neues Tierchen wiederhergestellt: ${state.value.name}." }
+        else _message.value = "Diese Sicherung kann diese Version noch nicht lesen. Sie bleibt erhalten."
+    }
+
     override fun onCleared() { stopSteps() }
 }
 

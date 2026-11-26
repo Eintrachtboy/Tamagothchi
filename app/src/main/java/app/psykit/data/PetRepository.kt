@@ -1,21 +1,29 @@
 package app.psykit.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import app.psykit.core.engine.PetEngine
 import app.psykit.core.model.PetState
+import app.psykit.core.save.Backup
+import app.psykit.core.save.KeyValueStore
+import app.psykit.core.save.LoadResult
+import app.psykit.core.save.SaveStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.time.ZoneId
 
 /**
  * Speichert den Spielstand als JSON in den SharedPreferences.
  * Singleton, damit App-Oberfläche und Hintergrund-Worker denselben Stand benutzen.
+ *
+ * Spielstandschutz (Befund 21, 22): Ein Stand, der nicht gelesen werden kann, wird nie überschrieben.
+ * Er wird gesichert, das Tierchen wird gesperrt (nichts wird dafür gespeichert), und erst eine
+ * ausdrückliche Wahl in der Oberfläche startet neu. Sicherungen werden nie automatisch gelöscht.
  */
 class PetRepository private constructor(context: Context) {
     private val prefs = context.getSharedPreferences("psykit", Context.MODE_PRIVATE)
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    private val store = SaveStore(PrefsStore(prefs))
     private val lock = Any()
 
     val zone: ZoneId get() = ZoneId.systemDefault()
@@ -23,69 +31,116 @@ class PetRepository private constructor(context: Context) {
     // ---------- Mehrere Tierchen ----------
     // Das erste Tierchen heißt intern „p1“ und nutzt die alten Speicherplätze weiter.
 
-    private val _currentId = MutableStateFlow(prefs.getString(KEY_CURRENT, null) ?: FIRST)
+    private val _currentId = MutableStateFlow(store.resolveCurrent())
     val currentId: StateFlow<String> = _currentId
 
-    val petIds: List<String>
-        get() = prefs.getString(KEY_IDS, null)?.split(',')?.filter { it.isNotBlank() }?.ifEmpty { null } ?: listOf(FIRST)
+    val petIds: List<String> get() = store.petIds
 
-    private fun stateKey(id: String) = if (id == FIRST) KEY_STATE else "${KEY_STATE}_$id"
+    /** Tierchen, deren Spielstand nicht gelesen werden konnte. Für sie wird nichts gespeichert. */
+    private val locked = mutableSetOf<String>()
+    private val _currentLocked = MutableStateFlow(false)
+    /** true, solange der Spielstand des aktiven Tierchens nicht lesbar ist. */
+    val currentLocked: StateFlow<Boolean> = _currentLocked
+    private fun publishLock() { _currentLocked.value = _currentId.value in locked }
 
     private val _state = MutableStateFlow(load(_currentId.value))
     val state: StateFlow<PetState> = _state
 
-    private fun read(id: String): PetState? =
-        prefs.getString(stateKey(id), null)?.let { runCatching { json.decodeFromString(PetState.serializer(), it) }.getOrNull() }
+    init { publishLock() }
 
-    private fun load(id: String): PetState = read(id) ?: PetState.newEgg(System.currentTimeMillis()).also { save(id, it) }
+    /** Liest einen Stand. Ist er defekt, wird er gesichert und das Tierchen gesperrt. */
+    private fun readOk(id: String): PetState? = when (val r = store.read(id)) {
+        is LoadResult.Ok -> r.state
+        LoadResult.Missing -> null
+        is LoadResult.Corrupt -> {
+            store.backupCorrupt(id, r.raw, System.currentTimeMillis())
+            locked += id
+            null
+        }
+    }
+
+    private fun load(id: String): PetState {
+        when (val r = store.read(id)) {
+            is LoadResult.Ok -> { locked -= id; return r.state }
+            LoadResult.Missing -> {
+                locked -= id
+                return PetState.newEgg(System.currentTimeMillis()).also { save(id, it) }
+            }
+            is LoadResult.Corrupt -> {
+                store.backupCorrupt(id, r.raw, System.currentTimeMillis())
+                locked += id
+                // Platzhalter nur für die Anzeige; save() schreibt für gesperrte Tierchen nie.
+                return PetState.newEgg(System.currentTimeMillis())
+            }
+        }
+    }
 
     private fun save(id: String, s: PetState) {
-        prefs.edit().putString(stateKey(id), json.encodeToString(PetState.serializer(), s)).apply()
+        if (id in locked) return
+        store.write(id, s)
     }
 
     private fun save(s: PetState) = save(_currentId.value, s)
 
-    /** Alle Tierchen mit nachgerechneter Zeit (nur zum Anzeigen, nicht gespeichert). */
+    /** Alle lesbaren Tierchen mit nachgerechneter Zeit (nur zum Anzeigen, nicht gespeichert). */
     fun allPets(): List<Pair<String, PetState>> = synchronized(lock) {
         val now = System.currentTimeMillis()
         petIds.mapNotNull { id ->
-            val s = if (id == _currentId.value) _state.value else read(id)
+            val s = if (id == _currentId.value) _state.value.takeIf { id !in locked } else readOk(id)
             s?.let { id to PetEngine.advance(it, now, zone) }
         }
     }
 
+    /** Tierchen, deren Spielstand nicht gelesen werden konnte (sie fehlen in [allPets]). */
+    fun brokenPets(): List<String> = synchronized(lock) {
+        petIds.filter { id -> if (id == _currentId.value) id in locked else store.read(id) is LoadResult.Corrupt }
+    }
+
     fun switchTo(id: String) = synchronized(lock) {
         if (id !in petIds) return@synchronized
-        refresh()
-        prefs.edit().putString(KEY_CURRENT, id).apply()
+        if (id != _currentId.value) refresh()
+        store.setCurrent(id)
         _currentId.value = id
         _state.value = PetEngine.advance(load(id), System.currentTimeMillis(), zone)
         save(_state.value)
+        publishLock()
     }
 
     /** Ein anderes (nicht aktives) Tierchen verändern, z. B. beim Besuch. */
     fun updatePet(id: String, block: (PetState) -> PetState) = synchronized(lock) {
         if (id == _currentId.value) { update { s, _ -> block(s) to Unit }; return@synchronized }
-        val s = read(id) ?: return@synchronized
+        val s = readOk(id) ?: return@synchronized
         save(id, block(PetEngine.advance(s, System.currentTimeMillis(), zone)))
     }
 
     /** Neues Tierchen (Ei) anlegen und dorthin wechseln. */
     fun addPet(name: String): String = synchronized(lock) {
-        val id = "p" + System.currentTimeMillis().toString(36)
-        save(id, PetState.newEgg(System.currentTimeMillis(), name.ifBlank { "Lumi" }))
-        prefs.edit().putString(KEY_IDS, (petIds + id).joinToString(",")).apply()
-        switchTo(id)
-        id
+        addPetWith(PetState.newEgg(System.currentTimeMillis(), name.ifBlank { "Lumi" }))
     }
 
-    /** Tierchen löschen (nicht das letzte). Gibt die id zurück, zu der gewechselt wurde. */
+    private fun addPetWith(s: PetState): String {
+        refresh()
+        val id = "p" + System.currentTimeMillis().toString(36)
+        store.addPet(id, s)
+        _currentId.value = id
+        locked -= id
+        _state.value = PetEngine.advance(s, System.currentTimeMillis(), zone)
+        save(_state.value)
+        publishLock()
+        return id
+    }
+
+    /** Tierchen löschen (nicht das letzte). Liste, Stand und neue Auswahl werden gemeinsam geschrieben. */
     fun deletePet(id: String) = synchronized(lock) {
-        val ids = petIds
-        if (ids.size <= 1 || id !in ids) return@synchronized
-        val rest = ids - id
-        prefs.edit().putString(KEY_IDS, rest.joinToString(",")).remove(stateKey(id)).apply()
-        if (_currentId.value == id) switchTo(rest.first())
+        val wasCurrent = id == _currentId.value
+        val next = store.deletePet(id, _currentId.value) ?: return@synchronized
+        locked -= id
+        if (wasCurrent) {
+            _currentId.value = next
+            _state.value = PetEngine.advance(load(next), System.currentTimeMillis(), zone)
+            save(_state.value)
+        }
+        publishLock()
     }
 
     /** Liest, rechnet die vergangene Zeit nach, wendet [block] an und speichert. */
@@ -100,10 +155,41 @@ class PetRepository private constructor(context: Context) {
 
     fun refresh() = update { s, _ -> s to Unit }
 
+    /** Neues Ei für das aktive Tierchen (ausdrückliche Wahl). Eine vorhandene Sicherung bleibt erhalten. */
     fun reset(name: String) = synchronized(lock) {
         val s = PetState.newEgg(System.currentTimeMillis(), name.ifBlank { "Lumi" })
+        locked -= _currentId.value
         save(s); _state.value = s
+        publishLock()
         // Der Tages-Schrittzähler gehört allen Tierchen gemeinsam und bleibt beim Neustart eines Tiers erhalten.
+    }
+
+    // ---------- Wiederherstellung ----------
+
+    /** Den Stand des aktiven Tierchens erneut lesen. true, wenn er jetzt lesbar ist. */
+    fun retry(): Boolean = synchronized(lock) {
+        val id = _currentId.value
+        val r = store.read(id)
+        if (r is LoadResult.Ok) {
+            locked -= id
+            _state.value = PetEngine.advance(r.state, System.currentTimeMillis(), zone)
+            save(_state.value)
+        }
+        publishLock()
+        r is LoadResult.Ok
+    }
+
+    /** Rohtext des aktiven Tierchens (zum Teilen), unverändert wie gespeichert. */
+    fun currentRaw(): String? = store.raw(_currentId.value)
+
+    fun backups(): List<Backup> = store.backups()
+
+    /** Sicherung als neues Tierchen anlegen, falls sie lesbar ist. Nichts wird überschrieben. */
+    fun restoreBackup(key: String): Boolean = synchronized(lock) {
+        val b = store.backups().firstOrNull { it.key == key } ?: return@synchronized false
+        val r = SaveStore.decode(b.raw) as? LoadResult.Ok ?: return@synchronized false
+        addPetWith(r.state)
+        true
     }
 
     // ---------- Schrittzähler ----------
@@ -112,6 +198,8 @@ class PetRepository private constructor(context: Context) {
 
     /** Verarbeitet einen neuen Sensorwert und gibt die neu hinzugekommenen Schritte zurück. */
     fun onStepCounter(counter: Long): Long = synchronized(lock) {
+        // Gesperrtes Tierchen: Zählerstand nicht weitersetzen, damit die Schritte später gutgeschrieben werden.
+        if (_currentId.value in locked) return@synchronized 0L
         val last = prefs.getLong(KEY_LAST_COUNTER, -1L)
         val delta = when {
             last < 0 -> 0L // erster Kontakt: nur merken
@@ -152,18 +240,29 @@ class PetRepository private constructor(context: Context) {
         set(v) = prefs.edit().putLong(KEY_LAST_NOTIF, v).apply()
 
     companion object {
-        private const val KEY_STATE = "state"
-        private const val KEY_CURRENT = "current_pet"
-        private const val KEY_IDS = "pet_ids"
-        const val FIRST = "p1"
         private const val KEY_LAST_COUNTER = "step_counter_last"
         private const val KEY_STEPS_TODAY = "steps_today"
         private const val KEY_STEPS_DAY = "steps_day"
         private const val KEY_LAST_SAMPLE_AT = "step_sample_at"
         private const val KEY_LAST_NOTIF = "last_notification"
+        const val FIRST = SaveStore.FIRST
 
         @Volatile private var instance: PetRepository? = null
         fun get(context: Context): PetRepository =
             instance ?: synchronized(this) { instance ?: PetRepository(context.applicationContext).also { instance = it } }
+    }
+}
+
+/** SharedPreferences als [KeyValueStore]: ein write-Block ist genau ein edit()…apply(). */
+private class PrefsStore(private val prefs: SharedPreferences) : KeyValueStore {
+    override fun getString(key: String): String? = prefs.getString(key, null)
+    override fun keys(): Set<String> = prefs.all.keys
+    override fun write(block: KeyValueStore.Batch.() -> Unit) {
+        val e = prefs.edit()
+        object : KeyValueStore.Batch {
+            override fun put(key: String, value: String) { e.putString(key, value) }
+            override fun remove(key: String) { e.remove(key) }
+        }.block()
+        e.apply()
     }
 }

@@ -40,6 +40,8 @@ fun PetsDialog(vm: PetViewModel, onDismiss: () -> Unit) {
     val spriteVersion by vm.spriteVersion.collectAsState()
     var refresh by remember { mutableIntStateOf(0) }
     val pets = remember(currentId, spriteVersion, refresh) { vm.allPets() }
+    val broken = remember(currentId, spriteVersion, refresh) { vm.brokenPets() }
+    val total = pets.size + broken.size
     var newName by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf<String?>(null) }
 
@@ -77,12 +79,25 @@ fun PetsDialog(vm: PetViewModel, onDismiss: () -> Unit) {
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             if (!current) TextButton(onClick = { vm.switchPet(id); onDismiss() }) { Text("Wechseln") }
-                            if (pets.size > 1) {
+                            if (total > 1) {
                                 if (confirmDelete == id) TextButton(onClick = { vm.deletePet(id); confirmDelete = null; refresh++ }) {
                                     Text("Wirklich?", color = MaterialTheme.colorScheme.error)
                                 } else TextButton(onClick = { confirmDelete = id }) { Text("Löschen") }
                             }
                         }
+                    }
+                }
+                broken.forEach { id ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(16.dp)).padding(8.dp),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("⚠️ Tierchen $id" + if (id == currentId) " (aktiv)" else "", fontWeight = FontWeight.Bold)
+                            Text("Spielstand nicht lesbar, aber gesichert.", style = MaterialTheme.typography.labelSmall)
+                        }
+                        if (id != currentId) TextButton(onClick = { vm.switchPet(id); onDismiss() }) { Text("Öffnen") }
                     }
                 }
                 HorizontalDivider()

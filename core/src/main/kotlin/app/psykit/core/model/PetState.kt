@@ -47,6 +47,8 @@ data class PetState(
     val sluggishUntil: Long = 0,
     // Kraulstelle: Tag (epochDay), an dem sie gefunden wurde
     val scratchFoundDay: Long = -1,
+    /** Runde 6: Mund-Markierung ausblenden, sobald Futter einmal am Mund gelandet ist. */
+    val mouthSeen: Boolean = false,
     // Heute schon probierte Kraulstellen (für Hinweise und die Anzeige)
     val scratchTriedDay: Long = -1,
     val scratchTried: List<Zone> = emptyList(),

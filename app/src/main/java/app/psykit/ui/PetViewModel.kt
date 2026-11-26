@@ -81,7 +81,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     fun greet() { _message.value = PetEngine.greeting(state.value, System.currentTimeMillis(), repo.zone) }
 
-    fun feed(food: Food) = act { s, now -> PetEngine.track(PetEngine.feed(s, food, now), Quest.FEED) }
+    fun feed(food: Food) = act { s, now -> PetEngine.track(PetEngine.feed(s, food, now), Quest.FEED).let { it.copy(state = it.state.copy(mouthSeen = true)) } }
     fun stroke(speedDp: Float) = act { s, now -> PetEngine.track(PetEngine.stroke(s, speedDp, now), Quest.STROKE) }
     /** [hint]: Richtungstipp aus den echten Zonen eines eigenen Bildes (K3); null = eingebaute Figur. */
     fun scratch(zone: Zone, hint: ((Zone, Zone) -> String)? = null, zones: List<Zone> = Zone.entries) = act { s, now ->

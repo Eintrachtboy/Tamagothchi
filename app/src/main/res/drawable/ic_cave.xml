@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="160dp"
+    android:viewportWidth="200"
+    android:viewportHeight="160">
+    <!-- Berg -->
+    <path
+        android:fillColor="#8B7355"
+        android:pathData="M10,150 L70,60 Q100,35 130,60 L190,150 Z" />
+    <!-- Schattenseite -->
+    <path
+        android:fillColor="#6B5740"
+        android:pathData="M100,150 L130,60 L190,150 Z" />
+    <!-- Höhleneingang -->
+    <path
+        android:fillColor="#1A1A2E"
+        android:pathData="M70,150 Q100,95 130,150 Z" />
+    <!-- X im Eingang -->
+    <path
+        android:strokeColor="#E5484D"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M90,125 L110,145 M110,125 L90,145" />
+</vector>

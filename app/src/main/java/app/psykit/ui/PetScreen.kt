@@ -6,6 +6,9 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import app.psykit.R
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -163,6 +166,11 @@ fun PetScreen(vm: PetViewModel) {
 
     // Befund 06: Körperzonen aus dem sichtbaren Umriss des eigenen Bildes (null = eingebaute Figur)
     val density = LocalDensity.current.density
+    // Runde 5: Tipp auf einen Zustandsring zeigt einen Hinweis in der Textzeile, nach 4 s wieder weg
+    var statHint by remember { mutableStateOf("") }
+    LaunchedEffect(statHint) {
+        if (statHint.isNotEmpty()) { kotlinx.coroutines.delay(4000); statHint = "" }
+    }
     val footprint = rememberFootprint(sprite)
 
     // Geometrie für Drag & Drop (alles in Root-Koordinaten)
@@ -389,15 +397,14 @@ fun PetScreen(vm: PetViewModel) {
                     footprintIn = footprint,
                     overlay = {
                         // Zustandsringe am oberen Bildrand (Runde 3)
-                        if (!isEgg) Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) { MiniStats(s) }
+                        if (!isEgg) Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) { MiniStats(s) { statHint = it } }
                         // Runde 4: Höhle (Dungeon) und Wegweiser (Garten) im linken freien Rand der Szene
-                        if (!isEgg) Column(
-                            Modifier.align(Alignment.CenterStart).padding(start = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(14.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            SceneDoor("🕳️", "⚔️", "Dungeon") { showDungeon = true }
-                            SceneDoor("🪧", "🌱", "Garten") { mode = Mode.GARDEN }
+                        // Runde 6: Wegweiser weiter oben im Hintergrund, Höhle unten links
+                        if (!isEgg) Box(Modifier.align(Alignment.TopStart).padding(start = 6.dp, top = 120.dp)) {
+                            GardenSign(onClick = { mode = Mode.GARDEN })
+                        }
+                        if (!isEgg) Box(Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 70.dp)) {
+                            CaveDoor(onClick = { showDungeon = true })
                         }
                         // Seitliche Leiste rechts im freien Rand neben der Figur (Runde 3)
                         if (!isEgg) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp, top = 52.dp)) {
@@ -427,7 +434,7 @@ fun PetScreen(vm: PetViewModel) {
                             )
                         }
                         when (mode) {
-                            Mode.FEED -> body?.let { MouthMarker(it.mouth, dragFood != null) }
+                            Mode.FEED -> if (!s.mouthSeen) body?.let { MouthMarker(it.mouth, dragFood != null) }
                             Mode.STROKE -> if (handPos == null) scratchPos?.let { p ->
                                 HandEmoji("🤏", p)
                                 if (scratchLabel.isNotEmpty()) Text(
@@ -451,7 +458,7 @@ fun PetScreen(vm: PetViewModel) {
                         }
                     },
                 )
-                MessageText(message.ifEmpty { statusLine(s) })
+                MessageText(statHint.ifEmpty { message.ifEmpty { statusLine(s) } })
                 // Feste Höhe für alle Pflegemodi: die Szene springt beim Wechsel nicht mehr (Runde 3)
                 if (!isEgg) Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.CenterStart) {
                     when (mode) {
@@ -595,18 +602,21 @@ private fun androidx.compose.foundation.layout.BoxScope.HandEmoji(emoji: String,
     )
 }
 
-/** Antippbarer Eingang in der Szene (Höhle zum Dungeon, Wegweiser zum Garten). */
+/** Runde 6: Wegweiser-Pfeil nach rechts, antippbar, im Hintergrund der Szene. */
 @Composable
-private fun SceneDoor(base: String, badge: String, label: String, onClick: () -> Unit) {
-    Column(
-        Modifier.width(54.dp).clickable(onClickLabel = label, onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(base, fontSize = 34.sp)
-            Text(badge, fontSize = 16.sp, modifier = Modifier.align(Alignment.Center))
-        }
-        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF3D2E6B), maxLines = 1)
+private fun GardenSign(onClick: () -> Unit) {
+    Column(Modifier.width(72.dp).clickable(onClickLabel = "Garten", onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(painter = painterResource(R.drawable.ic_arrow_sign), contentDescription = null, modifier = Modifier.size(width = 60.dp, height = 40.dp))
+        Text("Garten", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF3D2E6B), maxLines = 1)
+    }
+}
+
+/** Runde 6: Höhle als Vektorgrafik, antippbar, zum Dungeon. */
+@Composable
+private fun CaveDoor(onClick: () -> Unit) {
+    Column(Modifier.width(96.dp).clickable(onClickLabel = "Dungeon", onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(painter = painterResource(R.drawable.ic_cave), contentDescription = null, modifier = Modifier.size(width = 84.dp, height = 67.dp))
+        Text("Dungeon", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF3D2E6B), maxLines = 1)
     }
 }
 
@@ -848,7 +858,7 @@ private fun CompactHeader(s: PetState, onPets: () -> Unit, onInfo: () -> Unit, o
 
 /** Sechs kleine Zustandsringe in einer Zeile. */
 @Composable
-private fun MiniStats(s: PetState) {
+private fun MiniStats(s: PetState, onTip: (String) -> Unit) {
     // Runde 4: Antippen zeigt Name, Wert und was hilft
     data class Stat(val icon: String, val label: String, val value: Float, val tip: String)
     val stats = listOf(
@@ -859,22 +869,15 @@ private fun MiniStats(s: PetState) {
         Stat("➕", "Gesundheit", s.health, "Gute Pflege über längere Zeit heilt."),
         Stat("🤝", "Vertrauen", s.trust, "Liebevolle Pflege erhöht es, Nerven senkt es."),
     )
-    var shown by remember { mutableStateOf<Stat?>(null) }
-    shown?.let { st ->
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { shown = null },
-            title = { Text("${st.icon} ${st.label}") },
-            text = { Text("${st.value.coerceIn(0f, 100f).toInt()} von 100\n${st.tip}") },
-            confirmButton = { TextButton(onClick = { shown = null }) { Text("OK") } },
-        )
-    }
     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
         stats.forEach { stat ->
             val icon = stat.icon; val value = stat.value
             val v = value.coerceIn(0f, 100f)
             val color = when { v < 25f -> Color(0xFFE5484D); v < 50f -> Color(0xFFF5A524); else -> Color(0xFF46A758) }
             val track = MaterialTheme.colorScheme.surfaceVariant
-            Box(Modifier.size(36.dp).clickable(onClickLabel = stat.label) { shown = stat }, contentAlignment = Alignment.Center) {
+            Box(Modifier.size(36.dp).clickable(onClickLabel = stat.label) {
+                onTip("${stat.icon} ${stat.label} ${stat.value.coerceIn(0f, 100f).toInt()} von 100 · ${stat.tip}")
+            }, contentAlignment = Alignment.Center) {
                 Canvas(Modifier.fillMaxSize()) {
                     val sw = 3.5.dp.toPx()
                     val inset = sw / 2

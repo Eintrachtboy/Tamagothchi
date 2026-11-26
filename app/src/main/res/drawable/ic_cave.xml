@@ -3,22 +3,56 @@
     android:height="160dp"
     android:viewportWidth="200"
     android:viewportHeight="160">
-    <!-- Berg -->
-    <path
-        android:fillColor="#8B7355"
-        android:pathData="M10,150 L70,60 Q100,35 130,60 L190,150 Z" />
-    <!-- Schattenseite -->
-    <path
-        android:fillColor="#6B5740"
-        android:pathData="M100,150 L130,60 L190,150 Z" />
+    <!-- Schatten am Boden -->
+    <path android:fillColor="#33000000"
+        android:pathData="M8,152 Q100,162 192,152 Q100,146 8,152 Z" />
+    <!-- Berg: Lichtseite -->
+    <path android:fillColor="#9A8060"
+        android:pathData="M10,150 L62,70 Q72,50 92,42 Q100,38 108,42 L100,150 Z" />
+    <!-- Berg: Schattenseite -->
+    <path android:fillColor="#6B5740"
+        android:pathData="M100,150 L108,42 Q128,50 138,70 L190,150 Z" />
+    <!-- Gipfel-Licht -->
+    <path android:fillColor="#B79B76"
+        android:pathData="M80,56 Q92,44 100,42 Q104,46 98,58 Q90,52 80,56 Z" />
+    <!-- Felsrisse -->
+    <path android:strokeColor="#4F3F2D" android:strokeWidth="2" android:strokeLineCap="round"
+        android:pathData="M118,70 L124,92 M60,96 L68,114 M150,104 L158,122" />
+    <!-- Gras oben -->
+    <path android:fillColor="#6FB36A"
+        android:pathData="M88,46 Q100,36 112,46 Q104,44 100,50 Q96,44 88,46 Z" />
+    <!-- Büsche -->
+    <path android:fillColor="#5FA05C"
+        android:pathData="M16,148 Q22,132 36,138 Q42,128 54,140 Q60,146 56,152 L16,152 Z" />
+    <path android:fillColor="#5FA05C"
+        android:pathData="M152,150 Q160,136 172,142 Q180,134 188,146 L190,152 L150,152 Z" />
+    <!-- Eingang: Rahmen aus Holz -->
+    <path android:fillColor="#7A5A3A"
+        android:pathData="M64,152 Q64,96 100,90 Q136,96 136,152 L128,152 Q128,106 100,100 Q72,106 72,152 Z" />
     <!-- Höhleneingang -->
-    <path
-        android:fillColor="#1A1A2E"
-        android:pathData="M70,150 Q100,95 130,150 Z" />
-    <!-- X im Eingang -->
-    <path
-        android:strokeColor="#E5484D"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M90,125 L110,145 M110,125 L90,145" />
+    <path android:fillColor="#14142B"
+        android:pathData="M72,152 Q72,106 100,100 Q128,106 128,152 Z" />
+    <!-- Steine am Eingang -->
+    <path android:fillColor="#8E8E99"
+        android:pathData="M58,152 Q60,144 68,144 Q76,144 78,152 Z" />
+    <path android:fillColor="#8E8E99"
+        android:pathData="M124,152 Q126,146 133,146 Q141,146 143,152 Z" />
+    <!-- Schwert 1 (von links unten nach rechts oben) -->
+    <path android:fillColor="#D9DEE8"
+        android:pathData="M91.4,139.4 L109.8,121.8 L114,120 L112.2,124.2 L94.6,142.6 Z" />
+    <path android:strokeColor="#C9A24B" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M89.5,137.5 L96.5,144.5" />
+    <path android:strokeColor="#6A4A2C" android:strokeWidth="3.5" android:strokeLineCap="round"
+        android:pathData="M93,141 L87,147" />
+    <path android:fillColor="#C9A24B"
+        android:pathData="M86,145.7 m-2.3,0 a2.3,2.3 0 1,0 4.6,0 a2.3,2.3 0 1,0 -4.6,0" />
+    <!-- Schwert 2 (von rechts unten nach links oben), liegt darüber -->
+    <path android:fillColor="#B8BFCF"
+        android:pathData="M108.6,139.4 L90.2,121.8 L86,120 L87.8,124.2 L105.4,142.6 Z" />
+    <path android:strokeColor="#C9A24B" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M110.5,137.5 L103.5,144.5" />
+    <path android:strokeColor="#6A4A2C" android:strokeWidth="3.5" android:strokeLineCap="round"
+        android:pathData="M107,141 L113,147" />
+    <path android:fillColor="#C9A24B"
+        android:pathData="M114,145.7 m-2.3,0 a2.3,2.3 0 1,0 4.6,0 a2.3,2.3 0 1,0 -4.6,0" />
 </vector>

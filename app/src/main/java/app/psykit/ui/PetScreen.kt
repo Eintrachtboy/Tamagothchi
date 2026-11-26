@@ -395,17 +395,18 @@ fun PetScreen(vm: PetViewModel) {
                     floating = floating,
                     wear = Wearables.of(s, headPoint),
                     footprintIn = footprint,
+                    showLandmarks = !isEgg,
+                    // Variante b: Der Wegweiser verschwindet, solange rechts die Werkzeugleiste offen ist
+                    showSign = !(mode == Mode.FEED || mode == Mode.CLEAN || mode == Mode.SLEEP),
                     overlay = {
                         // Zustandsringe am oberen Bildrand (Runde 3)
                         if (!isEgg) Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) { MiniStats(s) { statHint = it } }
                         // Runde 4: Höhle (Dungeon) und Wegweiser (Garten) im linken freien Rand der Szene
-                        // Runde 6: Wegweiser weiter oben im Hintergrund, Höhle unten links
-                        if (!isEgg) Box(Modifier.align(Alignment.TopStart).padding(start = 6.dp, top = 120.dp)) {
-                            GardenSign(onClick = { mode = Mode.GARDEN })
-                        }
-                        if (!isEgg) Box(Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 70.dp)) {
-                            CaveDoor(onClick = { showDungeon = true })
-                        }
+                        // Runde 7: Höhle und Wegweiser sind Teil des Hintergrunds; hier nur die Tippflächen
+                        if (!isEgg) LandmarkTargets(
+                            onDungeon = { showDungeon = true }, onGarden = { mode = Mode.GARDEN },
+                            showGarden = !(mode == Mode.FEED || mode == Mode.CLEAN || mode == Mode.SLEEP),
+                        )
                         // Seitliche Leiste rechts im freien Rand neben der Figur (Runde 3)
                         if (!isEgg) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp, top = 52.dp)) {
                             CareTray(
@@ -435,20 +436,8 @@ fun PetScreen(vm: PetViewModel) {
                         }
                         when (mode) {
                             Mode.FEED -> if (!s.mouthSeen) body?.let { MouthMarker(it.mouth, dragFood != null) }
-                            Mode.STROKE -> if (handPos == null) scratchPos?.let { p ->
-                                HandEmoji("🤏", p)
-                                if (scratchLabel.isNotEmpty()) Text(
-                                    "Kraulen: $scratchLabel …", fontWeight = FontWeight.Bold, color = Color(0xFF5B3FA6),
-                                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
-                                )
-                            } else handPos?.let { p ->
-                                HandEmoji("✋", p)
-                                if (strokeHint.isNotEmpty()) Text(
-                                    strokeHint, fontWeight = FontWeight.Bold,
-                                    color = if (strokeHint == "zu schnell!") Color(0xFFE5484D) else Color(0xFF5B3FA6),
-                                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
-                                )
-                            }
+                            // Runde 7: Texte zum Streicheln/Kraulen stehen in der Textzeile unter der Szene
+                            Mode.STROKE -> if (handPos == null) scratchPos?.let { p -> HandEmoji("🤏", p) } else handPos?.let { p -> HandEmoji("✋", p) }
                             Mode.CLEAN -> {
                                 CleanOverlay(spots, foam, cleaned, cleanTick)
                                 toolPos?.let { p -> HandEmoji(when (tool) { 1 -> "🚿"; 2 -> "🧹"; else -> "🧽" }, p) }
@@ -458,7 +447,13 @@ fun PetScreen(vm: PetViewModel) {
                         }
                     },
                 )
-                MessageText(statHint.ifEmpty { message.ifEmpty { statusLine(s) } })
+                // Während des Streichelns/Kraulens steht der Live-Hinweis hier statt über dem Bild
+                val liveHint = when {
+                    mode == Mode.STROKE && handPos == null && scratchPos != null && scratchLabel.isNotEmpty() -> "Kraulen: $scratchLabel …"
+                    mode == Mode.STROKE && handPos != null && strokeHint.isNotEmpty() -> strokeHint
+                    else -> ""
+                }
+                MessageText(liveHint.ifEmpty { statHint.ifEmpty { message.ifEmpty { statusLine(s) } } })
                 // Feste Höhe für alle Pflegemodi: die Szene springt beim Wechsel nicht mehr (Runde 3)
                 if (!isEgg) Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.CenterStart) {
                     when (mode) {
@@ -600,24 +595,6 @@ private fun androidx.compose.foundation.layout.BoxScope.HandEmoji(emoji: String,
         emoji, fontSize = 36.sp,
         modifier = Modifier.offset { IntOffset((p.x - 22.dp.toPx()).roundToInt(), (p.y - 26.dp.toPx()).roundToInt()) },
     )
-}
-
-/** Runde 6: Wegweiser-Pfeil nach rechts, antippbar, im Hintergrund der Szene. */
-@Composable
-private fun GardenSign(onClick: () -> Unit) {
-    Column(Modifier.width(72.dp).clickable(onClickLabel = "Garten", onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
-        Image(painter = painterResource(R.drawable.ic_arrow_sign), contentDescription = null, modifier = Modifier.size(width = 60.dp, height = 40.dp))
-        Text("Garten", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF3D2E6B), maxLines = 1)
-    }
-}
-
-/** Runde 6: Höhle als Vektorgrafik, antippbar, zum Dungeon. */
-@Composable
-private fun CaveDoor(onClick: () -> Unit) {
-    Column(Modifier.width(96.dp).clickable(onClickLabel = "Dungeon", onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
-        Image(painter = painterResource(R.drawable.ic_cave), contentDescription = null, modifier = Modifier.size(width = 84.dp, height = 67.dp))
-        Text("Dungeon", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF3D2E6B), maxLines = 1)
-    }
 }
 
 /** Befund 15: zeigt, wo der Mund ist; beim Ziehen deutlicher. */

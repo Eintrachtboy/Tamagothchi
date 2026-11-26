@@ -3,11 +3,27 @@
     android:height="40dp"
     android:viewportWidth="60"
     android:viewportHeight="40">
-    <!-- Wegweiser-Pfeil nach rechts -->
-    <path
-        android:fillColor="#7A5A3A"
-        android:pathData="M4,12 L40,12 L40,4 L58,20 L40,36 L40,28 L4,28 Z" />
-    <path
-        android:fillColor="#5A4128"
-        android:pathData="M28,28 L32,28 L32,40 L28,40 Z" />
+    <!-- Schatten -->
+    <path android:fillColor="#33000000"
+        android:pathData="M20,39 Q31,41 42,39 Q31,37.5 20,39 Z" />
+    <!-- Pfosten -->
+    <path android:fillColor="#6A4A2C"
+        android:pathData="M27,24 L33,24 L33,39 L27,39 Z" />
+    <path android:fillColor="#563B22"
+        android:pathData="M30,24 L33,24 L33,39 L30,39 Z" />
+    <!-- Pfeilbrett: Rand -->
+    <path android:fillColor="#5A4128"
+        android:pathData="M3,11 L39,11 L39,3 L58,18 L39,33 L39,25 L3,25 Z" />
+    <!-- Pfeilbrett: Fläche -->
+    <path android:fillColor="#8E6B45"
+        android:pathData="M5,13 L41,13 L41,7 L53,18 L41,29 L41,23 L5,23 Z" />
+    <!-- Holzmaserung -->
+    <path android:strokeColor="#A07C54" android:strokeWidth="1" android:strokeLineCap="round"
+        android:pathData="M8,16 L34,16 M8,20 L30,20" />
+    <!-- Nägel -->
+    <path android:fillColor="#3A2A18"
+        android:pathData="M7,16 m-1,0 a1,1 0 1,0 2,0 a1,1 0 1,0 -2,0 M7,20 m-1,0 a1,1 0 1,0 2,0 a1,1 0 1,0 -2,0" />
+    <!-- Gras am Fuß -->
+    <path android:fillColor="#6FB36A"
+        android:pathData="M22,39 L25,34 L27,39 Z M33,39 L35,35 L38,39 Z" />
 </vector>

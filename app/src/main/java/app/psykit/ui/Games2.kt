@@ -1,5 +1,9 @@
 package app.psykit.ui
 
+import app.psykit.core.model.GameTuning
+
+import app.psykit.core.model.Difficulty
+
 import android.os.SystemClock
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -53,7 +57,7 @@ import kotlin.random.Random
 // ---------------------------------------------------------------- Psi-Reaktion
 
 @Composable
-fun ReactionGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
+fun ReactionGame(sprite: Sprite?, s: PetState, difficulty: Difficulty, onDone: (Int, Int, Int) -> Unit) {
     val total = 15
     // 10 echte Leuchten, 5 Fallen, gemischt
     val events = remember { (List(10) { true } + List(5) { false }).shuffled() }
@@ -74,7 +78,7 @@ fun ReactionGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) 
         if (tappedThisRound) return@LaunchedEffect
         shownAt = SystemClock.elapsedRealtime()
         state = if (events[index]) "glow" else "trap"
-        delay(if (events[index]) (600 - index * 15).coerceAtLeast(380).toLong() else 1100L)
+        delay(if (events[index]) GameTuning.reactionGlowMs(difficulty, index) else 1100L)
         if (!tappedThisRound) {
             if (events[index]) feedback = "Zu langsam!" else { score++; feedback = "Gut widerstanden! 👍" }
             state = "result"
@@ -140,7 +144,7 @@ private val ECHO_COLORS = listOf(Color(0xFFFF6FA8), Color(0xFF7B5CD6), Color(0xF
 private val ECHO_SYMBOLS = listOf("♥", "☾", "✦", "☀")
 
 @Composable
-fun EchoGame(onDone: (Int, Int, Int) -> Unit) {
+fun EchoGame(difficulty: Difficulty, onDone: (Int, Int, Int) -> Unit) {
     val max = 15
     val seq = remember { mutableStateListOf<Int>() }
     var lit by remember { mutableIntStateOf(-1) }
@@ -154,7 +158,7 @@ fun EchoGame(onDone: (Int, Int, Int) -> Unit) {
         seq += Random.nextInt(4)
         phase = "show"; pos = 0
         delay(700)
-        val on = (420 - round * 30).coerceAtLeast(200).toLong()
+        val on = GameTuning.echoOnMs(difficulty, round)
         for (c in seq) {
             lit = c; delay(on); lit = -1; delay(120)
         }
@@ -235,7 +239,7 @@ private val SHADOW_GROUPS: List<List<Pair<String, String>>> = listOf(
 private val SHADOW_ITEMS = SHADOW_GROUPS.flatten()
 
 @Composable
-fun ShadowGame(onDone: (Int, Int, Int) -> Unit) {
+fun ShadowGame(difficulty: Difficulty, onDone: (Int, Int, Int) -> Unit) {
     val rounds = 12
     val picks = remember { SHADOW_ITEMS.shuffled().take(rounds) }
     var round by remember { mutableIntStateOf(0) }
@@ -265,7 +269,7 @@ fun ShadowGame(onDone: (Int, Int, Int) -> Unit) {
         visible = true
         delay((650 - round * 40).coerceAtLeast(220).toLong())
         visible = false
-        secondsLeft = 6
+        secondsLeft = GameTuning.shadowSeconds(difficulty)
         while (secondsLeft > 0 && answered == null) { delay(1000); if (answered == null) secondsLeft-- }
         if (answered == null) { timeUp = true; answered = -1 }
     }

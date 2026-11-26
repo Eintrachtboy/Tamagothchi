@@ -568,7 +568,7 @@ fun PetScreen(vm: PetViewModel) {
     game?.let { g ->
         GameDialog(
             kind = g, vm = vm, s = s, sprite = sprite,
-            onFinish = { score, max, bonus -> vm.finishGame(g, score, max, bonus); game = null },
+            onFinish = { score, max, bonus, diff -> vm.finishGame(g, score, max, bonus, diff); game = null },
             onCancel = { game = null },
         )
     }

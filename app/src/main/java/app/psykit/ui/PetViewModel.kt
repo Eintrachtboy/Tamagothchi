@@ -15,6 +15,7 @@ import app.psykit.core.model.Slot
 import app.psykit.core.engine.PetEngine
 import app.psykit.core.engine.GardenEngine
 import app.psykit.core.model.Food
+import app.psykit.core.model.Difficulty
 import app.psykit.core.model.GameKind
 import app.psykit.core.model.PetState
 import app.psykit.core.model.Quest
@@ -127,16 +128,16 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Gibt null zurück, wenn gespielt werden darf, sonst den Grund. */
     fun checkPlay(): String? = PetEngine.canPlay(state.value)?.message?.also { _message.value = it }
-    fun finishGame(kind: GameKind, score: Int, max: Int, bonusExp: Int = 0) {
+    fun finishGame(kind: GameKind, score: Int, max: Int, bonusExp: Int = 0, difficulty: Difficulty = Difficulty.NORMAL) {
         val visit = pendingVisit.takeIf { kind == GameKind.VISIT }
         pendingVisit = null
         if (visit == null) {
-            act { s, _ -> PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp), Quest.PLAY) }
+            act { s, _ -> PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp, difficulty), Quest.PLAY) }
             return
         }
         // Befund 08: beide Gutschriften gemeinsam und genau einmal
         val r = repo.updateWithPartner(visit.first, { PetEngine.visited(it, visit.second) }) { s, _ ->
-            PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp), Quest.PLAY).let { it.state to it }
+            PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp, difficulty), Quest.PLAY).let { it.state to it }
         }
         _message.value = r.message
         if (r.reaction != Reaction.NONE) _reaction.value = ReactionEvent(_reaction.value.id + 1, r.reaction)

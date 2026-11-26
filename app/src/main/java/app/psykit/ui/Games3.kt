@@ -1,5 +1,9 @@
 package app.psykit.ui
 
+import app.psykit.core.model.GameTuning
+
+import app.psykit.core.model.Difficulty
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -88,7 +92,7 @@ private val RECIPES = listOf(
 )
 
 @Composable
-fun CookGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
+fun CookGame(sprite: Sprite?, s: PetState, difficulty: Difficulty, onDone: (Int, Int, Int) -> Unit) {
     val rounds = 5
     // erst 2 Rezepte mit 3 Zutaten, dann 3 mit 4 Zutaten
     val recipes = remember { RECIPES.filter { it.items.size == 3 }.shuffled().take(2) + RECIPES.filter { it.items.size == 4 }.shuffled().take(3) }
@@ -101,7 +105,7 @@ fun CookGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
     LaunchedEffect(round) {
         if (round >= rounds) { delay(300); onDone(score, rounds, 0); return@LaunchedEffect }
         pot.clear(); result = null; showRecipe = true
-        delay((3000 - round * 350).coerceAtLeast(1600).toLong())
+        delay(GameTuning.cookShowMs(difficulty, round))
         showRecipe = false
     }
     if (round >= rounds) return
@@ -170,7 +174,7 @@ fun CookGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
 // ---------------------------------------------------------------- Wolkenhüpfen
 
 @Composable
-fun CloudHopGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
+fun CloudHopGame(sprite: Sprite?, s: PetState, difficulty: Difficulty, onDone: (Int, Int, Int) -> Unit) {
     val goal = 25
     val phases = remember { List(goal + 2) { Random.nextFloat() * 6.28f } }
     val dirs = remember { List(goal + 2) { if (Random.nextBoolean()) 1f else -1f } }
@@ -181,9 +185,11 @@ fun CloudHopGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) 
     var fallStart by remember { mutableFloatStateOf(-1f) }
     var camera by remember { mutableFloatStateOf(0f) }
     var over by remember { mutableStateOf(false) }
+    // Das Ergebnis eines Sprungs steht beim Antippen fest: Was man sieht (Wolken übereinander), zählt.
+    var jumpHit by remember { mutableStateOf(false) }
 
     fun cloudX(i: Int, t: Float): Float =
-        if (i == 0) 0.5f else 0.5f + 0.38f * sin(t * (1.1f + i * 0.08f) * dirs[i] + phases[i])
+        if (i == 0) 0.5f else 0.5f + 0.38f * sin(t * GameTuning.cloudSpeed(difficulty, i) * dirs[i] + phases[i])
 
     LaunchedEffect(Unit) {
         var last = withFrameNanos { it }
@@ -193,8 +199,7 @@ fun CloudHopGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) 
                 time += dt
                 if (jumpStart >= 0f && time - jumpStart >= 0.45f) {
                     jumpStart = -1f
-                    val px = cloudX(cur, time)
-                    if (abs(px - cloudX(cur + 1, time)) < (0.11f - cur * 0.002f).coerceAtLeast(0.07f)) {
+                    if (jumpHit) {
                         cur++
                         if (cur >= goal) over = true
                     } else {
@@ -215,14 +220,18 @@ fun CloudHopGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) 
 
     Column(Modifier.fillMaxSize()) {
         Text("Höhe: $cur / $goal · Leben: " + "❤️".repeat(lives.coerceAtLeast(0)), fontWeight = FontWeight.Bold)
-        Text(if (over) (if (cur >= goal) "Ganz oben! ☁️✨" else "Abgestürzt! Höhe $cur.") else "Tippe, wenn die nächste Wolke genau über dir ist.", style = MaterialTheme.typography.bodySmall)
+        Text(if (over) (if (cur >= goal) "Ganz oben! ☁️✨" else "Abgestürzt! Höhe $cur.") else "Tippe, wenn die nächste Wolke grün wird: dann liegt sie über dir.", style = MaterialTheme.typography.bodySmall)
         Spacer(Modifier.height(8.dp))
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
                 .background(Brush.verticalGradient(listOf(Color(0xFF6FB8F0), Color(0xFFD9F0FF))), RoundedCornerShape(20.dp))
                 .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                    if (!over && jumpStart < 0f && fallStart < 0f) jumpStart = time
+                    if (!over && jumpStart < 0f && fallStart < 0f) {
+                        // Befund 23: großzügiges Trefferfenster, das mit der Stufe und der Schwierigkeit schrumpft
+                        jumpHit = abs(cloudX(cur, time) - cloudX(cur + 1, time)) < GameTuning.cloudWindow(difficulty, cur)
+                        jumpStart = time
+                    }
                 },
         ) {
             val wPx = constraints.maxWidth.toFloat()
@@ -235,14 +244,21 @@ fun CloudHopGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) 
                 for (i in maxOf(0, cur - 2)..minOf(goal, cur + 4)) {
                     val y = levelY(i)
                     if (y < -50f || y > size.height + 50f) continue
-                    drawCloud(Offset(cloudX(i, time) * size.width, y), size.width * 0.13f, if (i == goal) Color(0xFFFFF4C2) else Color.White)
+                    // Die nächste Wolke wird grün, solange sie im Trefferfenster liegt: jetzt tippen!
+                    val aligned = i == cur + 1 && fallStart < 0f && jumpStart < 0f &&
+                        abs(cloudX(cur, time) - cloudX(i, time)) < GameTuning.cloudWindow(difficulty, cur)
+                    drawCloud(
+                        Offset(cloudX(i, time) * size.width, y), size.width * 0.13f,
+                        if (aligned) Color(0xFFC9F2C0) else if (i == goal) Color(0xFFFFF4C2) else Color.White,
+                    )
                 }
             }
             val iconDp = 70.dp
             val iconPx = with(LocalDensity.current) { iconDp.toPx() }
             val jumpT = if (jumpStart >= 0f) ((time - jumpStart) / 0.45f).coerceIn(0f, 1f) else 0f
             val fallT = if (fallStart >= 0f) ((time - fallStart) / 0.7f).coerceIn(0f, 1f) else 0f
-            val px = cloudX(cur, time) * wPx
+            // Beim Treffer wandert das Tierchen beim Sprung auf die nächste Wolke, sonst springt es daran vorbei
+            val px = (if (jumpHit && jumpT > 0f) cloudX(cur, time) + (cloudX(cur + 1, time) - cloudX(cur, time)) * jumpT else cloudX(cur, time)) * wPx
             val py = levelY(cur) - iconPx * 0.75f - sin(jumpT * PI.toFloat()) * gap * 0.9f - jumpT * gap * 0.3f + fallT * hPx * 0.3f
             PetIcon(
                 sprite, s.stage, if (fallStart >= 0f) Mood.SAD else Mood.HAPPY, iconDp,

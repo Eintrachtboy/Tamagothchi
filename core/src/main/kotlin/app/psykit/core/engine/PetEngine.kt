@@ -1,6 +1,7 @@
 package app.psykit.core.engine
 
 import app.psykit.core.model.Effect
+import app.psykit.core.model.Difficulty
 import app.psykit.core.model.Food
 import app.psykit.core.model.Item
 import app.psykit.core.model.Plot
@@ -363,7 +364,7 @@ object PetEngine {
     }
 
     /** Ergebnis eines Spiels. Gute Ergebnisse trainieren einen Kampfwert. */
-    fun gameResult(s: PetState, game: GameKind, score: Int, max: Int, bonusExp: Int = 0): ActionResult {
+    fun gameResult(s: PetState, game: GameKind, score: Int, max: Int, bonusExp: Int = 0, difficulty: Difficulty = Difficulty.NORMAL): ActionResult {
         canPlay(s)?.let { return it }
         val ratio = if (max <= 0) 0f else (score.toFloat() / max).coerceIn(0f, 1f)
         val train = when { ratio >= 0.99f -> 2; ratio >= 0.5f -> 1; else -> 0 }
@@ -399,7 +400,10 @@ object PetEngine {
         val dust = raw.coerceAtMost(GAME_DUST_PER_DAY - already).coerceAtLeast(0)
         ns = ns.copy(stardust = ns.stardust + dust, stardustDay = day, stardustFromGames = already + dust)
         val dustMsg = if (dust > 0) " +$dust ✨" else if (already >= GAME_DUST_PER_DAY) " (Sternenstaub aus Spielen für heute aufgebraucht)" else ""
-        return withExp(ns, (3 + 8 * ratio).toInt() + bonusExp, msg + dustMsg, if (ratio >= 0.5f) Reaction.JUMP else Reaction.HAPPY)
+        // Schwer gibt etwas mehr EP (aufgerundet); Leicht und Mittel geben den normalen Fortschritt
+        val rawExp = 3 + 8 * ratio
+        val baseExp = if (difficulty.expFactor > 1f) kotlin.math.ceil(rawExp * difficulty.expFactor).toInt() else rawExp.toInt()
+        return withExp(ns, baseExp + bonusExp, msg + dustMsg, if (ratio >= 0.5f) Reaction.JUMP else Reaction.HAPPY)
     }
 
     /** Gartenbeeren für Sternenstaub verkaufen. */

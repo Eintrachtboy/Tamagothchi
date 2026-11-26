@@ -34,6 +34,15 @@ object TypeChart {
     /** Faktor eines Typs gegen einen Körper. Das eigene Tierchen hat keinen Körper (Faktor 1). */
     fun factor(type: AttackType, body: Body?): Double = if (body == null) 1.0 else table.getValue(type)[body.ordinal]
 
+    /** Kurzzeichen für die Typ-Matrix (Runde 15). */
+    fun symbol(f: Double): String = when {
+        f >= 2.0 -> "++"
+        f > 1.0 -> "+"
+        f < 0.3 -> "−−"
+        f < 1.0 -> "−"
+        else -> "·"
+    }
+
     fun label(f: Double): String = when {
         f >= 2.0 -> "sehr effektiv"
         f > 1.0 -> "effektiv"

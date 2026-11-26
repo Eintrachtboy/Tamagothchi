@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -55,6 +56,8 @@ import app.psykit.core.battle.MoveSource
 import app.psykit.core.battle.PetAction
 import app.psykit.core.battle.Potion
 import app.psykit.core.battle.TypeChart
+import app.psykit.core.battle.AttackType
+import app.psykit.core.battle.Body
 import app.psykit.core.dungeon.DungeonEngine
 import app.psykit.core.dungeon.DungeonRun
 import app.psykit.core.dungeon.Floors
@@ -140,6 +143,7 @@ fun DungeonDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () ->
 @Composable
 private fun FloorSelect(s: PetState, vm: PetViewModel) {
     var info by remember { mutableStateOf(false) }
+    var types by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val blocker = DungeonEngine.cannotEnter(s, s.dungeonProgress.coerceAtMost(Floors.DEPTH_START - 1))
         if (blocker != null) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
@@ -164,8 +168,10 @@ private fun FloorSelect(s: PetState, vm: PetViewModel) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Eintritt: 🗝️ 1 · ⚡ mind. ${DungeonEngine.MIN_ENERGY_TO_ENTER.toInt()} (kostet ${DungeonEngine.ENTRY_ENERGY.toInt()}, je Raum ${DungeonEngine.ROOM_ENERGY.toInt()}, in Hitze doppelt) · ❤️ 40 · wach", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
             TextButton(onClick = { info = !info }) { Text(if (info) "Regeln zu" else "ℹ️ Regeln") }
+            TextButton(onClick = { types = !types }) { Text(if (types) "Typen zu" else "📊 Typen") }
         }
         if (info) DungeonRules()
+        if (types) TypeMatrix()
         World.entries.forEach { w ->
             val floors = Floors.all.filter { it.world == w.n }
             val doneCount = floors.count { it.index < s.dungeonProgress }
@@ -516,6 +522,16 @@ private fun BattleView(vm: PetViewModel, s: PetState, st: BattleState, sprite: S
             if (front.isNotEmpty()) EnemyRow(front, st, target, "vorne") { target = it }
             if (st.icicleWarning) Text("⚠️ Über dir knackt die Decke!", color = Color(0xFFE5484D), fontWeight = FontWeight.Bold)
 
+            // Runde 15: Typ-Matrix, Spalte des gewählten Gegners hervorgehoben
+            var showTypes by remember { mutableStateOf(false) }
+            TextButton(onClick = { showTypes = true }) { Text("📊 Was wirkt gegen " + (selected?.body?.label ?: "wen") + "?") }
+            if (showTypes) androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showTypes = false },
+                confirmButton = { TextButton(onClick = { showTypes = false }) { Text("Schließen") } },
+                title = { Text("Attackentyp gegen Körper") },
+                text = { TypeMatrix(selected?.body) },
+            )
+
             // Kampfbericht: feste Höhe, springt ans Ende
             val logScroll = rememberScrollState()
             LaunchedEffect(st.log.size, st.round) { logScroll.scrollTo(logScroll.maxValue) }
@@ -622,5 +638,45 @@ private fun EnemyCard(e: Fighter, st: BattleState, selected: Boolean, modifier: 
         val statuses = e.status.keys.joinToString("") { it.emoji }
         if (statuses.isNotEmpty() || extra.isNotEmpty()) Text(statuses + " " + extra.joinToString(" "), fontSize = 11.sp, maxLines = 1)
         if (hit.isNotEmpty()) Text(hit.joinToString(" ") { if (it.heal) "+${it.amount}" else if (it.amount == 0) "verfehlt" else "-${it.amount}" }, fontSize = 11.sp, color = Color(0xFFE5484D), fontWeight = FontWeight.Bold)
+    }
+}
+
+/** Runde 15: Matrix Attackentyp × Gegnerkörper aus TypeChart. [highlight] hebt eine Spalte hervor. */
+@Composable
+internal fun TypeMatrix(highlight: Body? = null) {
+    fun color(f: Double) = when {
+        f >= 2.0 -> Color(0xFF2E9E5B)
+        f > 1.0 -> Color(0xFF8BD3A5)
+        f < 0.3 -> Color(0xFFE5484D)
+        f < 1.0 -> Color(0xFFF5A35C)
+        else -> Color(0x22888888)
+    }
+    val cell = Modifier.width(46.dp).padding(1.dp)
+    Column(Modifier.horizontalScroll(rememberScrollState())) {
+        Row {
+            Box(Modifier.width(72.dp))
+            Body.entries.forEach { b ->
+                Text(b.label, cell, fontSize = 9.sp, maxLines = 1, textAlign = TextAlign.Center,
+                    fontWeight = if (b == highlight) FontWeight.Bold else FontWeight.Normal,
+                    color = if (b == highlight) Gold else Color.Unspecified)
+            }
+        }
+        AttackType.entries.forEach { t ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${t.emoji} ${t.label}", Modifier.width(72.dp), fontSize = 10.sp, maxLines = 1)
+                Body.entries.forEach { b ->
+                    val f = TypeChart.factor(t, b)
+                    Box(
+                        cell.height(28.dp)
+                            .background(color(f), RoundedCornerShape(6.dp))
+                            .then(if (b == highlight) Modifier.border(2.dp, Gold, RoundedCornerShape(6.dp)) else Modifier),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(TypeChart.symbol(f) + " ×" + (if (f == f.toInt().toDouble()) f.toInt().toString() else f.toString().replace('.', ',')), fontSize = 9.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+        Text("++ sehr effektiv · + effektiv · · normal · − wenig · −− fast wirkungslos", fontSize = 9.sp, modifier = Modifier.padding(top = 4.dp))
     }
 }

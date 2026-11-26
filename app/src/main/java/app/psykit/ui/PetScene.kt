@@ -175,6 +175,8 @@ fun PetScene(
     footprintIn: Footprint? = null,
     /** Feste Höhe; null = so hoch wie der Platz, den der Aufrufer gibt (Zuhause, Befund 35). */
     sceneHeight: androidx.compose.ui.unit.Dp? = 340.dp,
+    /** Runde 7: Höhle (Dungeon) und Wegweiser (Garten) als Teil des Hintergrunds zeichnen. */
+    showLandmarks: Boolean = false,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val dressed = wear?.takeIf { stage != Stage.EGG && !it.empty }
@@ -231,7 +233,9 @@ fun PetScene(
             .background(Brush.verticalGradient(skyColors(phase)))
             .then(interaction),
     ) {
-        // Hintergrund: Himmel, Sonne/Mond, Sterne, Boden
+        // Hintergrund: Himmel, Sonne/Mond, Sterne, Hügel, Boden
+        val caveArt = androidx.compose.ui.res.painterResource(app.psykit.R.drawable.ic_cave)
+        val signArt = androidx.compose.ui.res.painterResource(app.psykit.R.drawable.ic_arrow_sign)
         Canvas(Modifier.fillMaxSize()) {
             val w = size.width; val h = size.height
             if (night) {
@@ -249,6 +253,8 @@ fun PetScene(
                 drawCircle(cloud, h * 0.065f, Offset(w * 0.25f, h * 0.15f))
                 drawCircle(cloud, h * 0.045f, Offset(w * 0.32f, h * 0.19f))
             }
+            drawHills(night)
+            if (showLandmarks) drawLandmarks(caveArt, signArt, night)
             val groundColor = if (night) Color(0xFF2A2452) else Color(0xFFCDEBC0)
             drawOval(groundColor, topLeft = Offset(-w * 0.2f, h * 0.8f), size = androidx.compose.ui.geometry.Size(w * 1.4f, h * 0.5f))
             if (custom != null) {

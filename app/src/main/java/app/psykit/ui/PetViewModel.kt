@@ -128,17 +128,24 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Gibt null zurück, wenn gespielt werden darf, sonst den Grund. */
     fun checkPlay(): String? = PetEngine.canPlay(state.value)?.message?.also { _message.value = it }
-    fun finishGame(kind: GameKind, score: Int, max: Int, bonusExp: Int = 0, difficulty: Difficulty = Difficulty.NORMAL) {
+    fun finishGame(kind: GameKind, score: Int, max: Int, bonusExp: Int = 0, difficulty: Difficulty = Difficulty.NORMAL, petId: String? = null) {
         val visit = pendingVisit.takeIf { kind == GameKind.VISIT }
         pendingVisit = null
+        // V77-04: Runde gehört zu dem Tierchen, mit dem sie begonnen wurde
+        if (petId != null && petId != repo.currentId.value) {
+            _message.value = "Das Tierchen wurde gewechselt, die Runde wird nicht gewertet."
+            return
+        }
         if (visit == null) {
             act { s, _ -> PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp, difficulty), Quest.PLAY) }
             return
         }
         // Befund 08: beide Gutschriften gemeinsam und genau einmal
-        val r = repo.updateWithPartner(visit.first, { PetEngine.visited(it, visit.second) }) { s, _ ->
-            PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp, difficulty), Quest.PLAY).let { it.state to it }
-        }
+        val r = repo.updateWithPartner(
+            visit.first, { PetEngine.visited(it, visit.second) },
+            current = { s, _ -> PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp, difficulty), Quest.PLAY).let { it.state to it } },
+            applyPartner = { it.success },
+        )
         _message.value = r.message
         if (r.reaction != Reaction.NONE) _reaction.value = ReactionEvent(_reaction.value.id + 1, r.reaction)
     }
@@ -155,7 +162,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     fun todaysGame(): GameKind = GameKind.dailyOn(PetEngine.epochDay(System.currentTimeMillis(), repo.zone))
 
     fun rename(name: String) = repo.update { s, _ -> PetEngine.rename(s, name) to Unit }
-    fun reset(name: String) { repo.reset(name); _message.value = "Ein neues Ei! Es schlüpft in ein paar Minuten." }
+    fun reset(name: String) { repo.reset(name); _message.value = "Ein neues Ei! Es schlüpft in etwa ${PetEngine.EGG_HATCH_MS / 1000} Sekunden." }
 
     private val _importReport = MutableStateFlow<List<app.psykit.sprites.ReportEntry>>(emptyList())
     /** Ausführlicher Bericht zum letzten Import (jede Datei mit Größe, Auflösung, Frames, Hinweisen). */
@@ -293,6 +300,8 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     /** Besuch vormerken; gebucht wird erst zusammen mit der eigenen Belohnung in [finishGame] (Befund 08). */
     private var pendingVisit: Pair<String, Float>? = null
     fun visitedBy(partnerId: String, ratio: Float) { pendingVisit = partnerId to ratio }
+    /** V77-03: Spiel abgebrochen – vorgemerkten Besuch verwerfen. */
+    fun cancelGame() { pendingVisit = null }
     fun spritesFor(id: String) = if (id == sprites.petId) sprites else SpriteStore(getApplication(), id)
 
     private val _floating = MutableStateFlow(packs.floating)
@@ -318,7 +327,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     fun addPet(name: String) {
         repo.addPet(name)
         reloadSprites()
-        _message.value = "Ein neues Ei für ${state.value.name}! Es schlüpft in ein paar Minuten."
+        _message.value = "Ein neues Ei für ${state.value.name}! Es schlüpft in etwa ${PetEngine.EGG_HATCH_MS / 1000} Sekunden."
     }
 
     fun deletePet(id: String) {

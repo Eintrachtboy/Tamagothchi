@@ -569,10 +569,12 @@ fun PetScreen(vm: PetViewModel) {
     }
 
     game?.let { g ->
+        // V77-04: Tierchen beim Start der Runde merken
+        val gamePetId = remember(g) { vm.currentPetId.value }
         GameDialog(
             kind = g, vm = vm, s = s, sprite = sprite,
-            onFinish = { score, max, bonus, diff -> vm.finishGame(g, score, max, bonus, diff); game = null },
-            onCancel = { game = null },
+            onFinish = { score, max, bonus, diff -> vm.finishGame(g, score, max, bonus, diff, gamePetId); game = null },
+            onCancel = { vm.cancelGame(); game = null },
         )
     }
     if (showStats) StatsDialog(s, onDismiss = { showStats = false })
@@ -600,7 +602,7 @@ internal fun gameInfo(k: GameKind) = when (k) {
     GameKind.HIDE_SEEK -> "Dein Tierchen versteckt sich hinter einer von drei Wolken. Die Wolken mischen sich, du findest es."
     GameKind.MEMORY -> "Dreh Karten um und finde die passenden Psi-Symbole."
     GameKind.BUBBLES -> "Bring in ${BUBBLES_SECONDS} Sekunden so viele Seifenblasen wie möglich zum Platzen."
-    GameKind.BERRIES -> "Kipp dein Handy, damit dein Tierchen die fallenden Beeren fängt. Goldene Beeren geben Extra-EP."
+    GameKind.BERRIES -> "Fang die fallenden Beeren: Zieh dein Tierchen mit dem Finger oder kipp dein Handy (Wahl unten). Goldene Beeren geben Extra-EP."
     GameKind.REACTION -> "Tippe so schnell wie möglich, wenn dein Tierchen lila aufleuchtet. Bei rotem Leuchten nicht tippen!"
     GameKind.ECHO -> "Merk dir die Farbfolge und spiel sie nach. Jede Runde wird sie länger."
     GameKind.SHADOW -> "Erkenne am Schatten, was es ist."
@@ -805,7 +807,7 @@ private fun CareTray(
 }
 
 private fun statusLine(s: PetState): String = when (s.stage) {
-    Stage.EGG -> "Ein Ei! Es schlüpft in ein paar Minuten …"
+    Stage.EGG -> "Ein Ei! Es schlüpft in etwa ${PetEngine.EGG_HATCH_MS / 1000} Sekunden …"
     else -> "${s.name} ${s.mood.label}."
 }
 

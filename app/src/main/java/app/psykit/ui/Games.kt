@@ -18,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -87,6 +88,7 @@ import kotlin.random.Random
 /** Befund 02: eine Rundendauer für Hilfetext, Countdown und Schwierigkeitsverlauf der Seifenblasen. */
 const val BUBBLES_SECONDS = 30
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun GameDialog(
     kind: GameKind,
@@ -100,6 +102,7 @@ fun GameDialog(
     // Befund 18/34: Startseite vor jeder Runde. 0 = Start, 1 = gewertete Runde, 2 = Ausprobieren (ohne Belohnung)
     var phase by remember { mutableStateOf(0) }
     var round by remember { mutableStateOf(0) }
+    var claimed by remember { mutableStateOf(false) }
     val firstTime = remember { kind.name !in s.gamesIntroSeen }
     // Befund 34: „Zeig's mir“ läuft beim ersten Mal von selbst und lässt sich danach per Knopf zeigen
     var showDemo by remember { mutableStateOf(firstTime) }
@@ -123,7 +126,8 @@ fun GameDialog(
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     val r = result
                     if (phase == 0) {
-                        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                        // V77-08: bei großer Schrift oder kleinem Display scrollt die Startseite, Knöpfe bleiben erreichbar
+                        Column(Modifier.align(Alignment.Center).fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
                             if (showDemo) GameDemo(kind, Modifier.padding(horizontal = 8.dp)) else PetIcon(sprite, s.stage, Mood.HAPPY, 120.dp)
                             Spacer(Modifier.height(12.dp))
                             if (firstTime) Text("Neu für ${s.name}!", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
@@ -131,7 +135,7 @@ fun GameDialog(
                             Spacer(Modifier.height(6.dp))
                             Text("Zeit und Wertung starten erst mit „Spielen“. Kostet ⚡ ${PetEngine.GAME_ENERGY.toInt()}.", style = MaterialTheme.typography.bodySmall)
                             TextButton(onClick = { showDemo = !showDemo }) { Text(if (showDemo) "Zeig's mir ausblenden" else "👀 Zeig's mir") }
-                            if (kind != GameKind.VISIT) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                            if (kind != GameKind.VISIT) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), modifier = Modifier.padding(top = 8.dp)) {
                                 Difficulty.entries.forEach { d ->
                                     androidx.compose.material3.FilterChip(
                                         selected = difficulty == d,
@@ -140,7 +144,7 @@ fun GameDialog(
                                     )
                                 }
                             }
-                            if (kind == GameKind.BERRIES) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                            if (kind == GameKind.BERRIES) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), modifier = Modifier.padding(top = 8.dp)) {
                                 androidx.compose.material3.FilterChip(selected = !berriesTilt, onClick = { berriesTilt = false; gamePrefs.edit().putBoolean("berries_tilt", false).apply() }, label = { Text("✋ Ziehen") })
                                 androidx.compose.material3.FilterChip(selected = berriesTilt, onClick = { berriesTilt = true; gamePrefs.edit().putBoolean("berries_tilt", true).apply() }, label = { Text("📱 Neigen") })
                             }
@@ -172,7 +176,8 @@ fun GameDialog(
                                 textAlign = TextAlign.Center,
                             )
                             Spacer(Modifier.height(16.dp))
-                            Button(onClick = { onFinish(r.first, r.second, r.third, difficulty) }) { Text("Belohnung abholen") }
+                            // V77-04: Belohnung nur einmal, auch bei Doppeltipp
+                            Button(enabled = !claimed, onClick = { if (!claimed) { claimed = true; onFinish(r.first, r.second, r.third, difficulty) } }) { Text("Belohnung abholen") }
                         }
                     } else {
                         val done: (Int, Int, Int) -> Unit = { a, b, c -> result = Triple(a, b, c) }
@@ -204,14 +209,14 @@ fun PetIcon(sprite: Sprite?, stage: Stage, mood: Mood, size: Dp, modifier: Modif
     when {
         anim != null -> {
             val drawable = remember(anim, anim.lastModified()) {
-                runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(anim)) }.getOrNull()
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(anim)) }.getOrNull() else null
             }
             AndroidView(
                 factory = { ctx -> ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_CENTER } },
                 update = { iv ->
                     if (iv.drawable !== drawable) {
                         iv.setImageDrawable(drawable)
-                        (drawable as? AnimatedImageDrawable)?.start()
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) (drawable as? AnimatedImageDrawable)?.start()
                     }
                 },
                 modifier = modifier.size(size),

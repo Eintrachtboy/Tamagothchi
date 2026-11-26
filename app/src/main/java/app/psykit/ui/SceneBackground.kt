@@ -20,7 +20,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -38,16 +40,16 @@ import kotlin.math.sin
 object SceneLandmarks {
     /** Höhle auf dem linken Hügel; Seitenverhältnis 200:160 wie die Vektorgrafik. */
     fun cave(w: Float, h: Float): Rect {
-        val cw = w * 0.24f
+        val cw = w * 0.28f
         val bottom = h * 0.71f
         return Rect(w * 0.03f, bottom - cw * 0.8f, w * 0.03f + cw, bottom)
     }
 
     /** Wegweiser auf dem rechten Hügel (Runde 8, Variante b); Seitenverhältnis 60:40. */
     fun sign(w: Float, h: Float): Rect {
-        val sw = w * 0.13f
+        val sw = w * 0.17f
         val bottom = h * 0.60f
-        return Rect(w * 0.70f, bottom - sw * 40f / 60f, w * 0.70f + sw, bottom)
+        return Rect(w * 0.67f, bottom - sw * 40f / 60f, w * 0.67f + sw, bottom)
     }
 }
 
@@ -63,9 +65,9 @@ fun DrawScope.drawHills(night: Boolean) {
     drawOval(Brush.verticalGradient(listOf(midTop, midBottom), startY = h * 0.56f, endY = h * 0.86f),
         topLeft = Offset(w * 0.38f, h * 0.56f), size = Size(w * 0.85f, h * 0.30f))
     // kleine Bäume auf den Hügeln
-    drawTree(Offset(w * 0.37f, h * 0.665f), h * 0.085f, night)
-    drawTree(Offset(w * 0.45f, h * 0.675f), h * 0.06f, night)
-    drawTree(Offset(w * 0.90f, h * 0.60f), h * 0.075f, night)
+    drawTree(Offset(w * 0.38f, h * 0.665f), h * 0.115f, night)
+    drawTree(Offset(w * 0.47f, h * 0.675f), h * 0.08f, night)
+    drawTree(Offset(w * 0.91f, h * 0.60f), h * 0.105f, night)
 }
 
 private fun DrawScope.drawTree(base: Offset, height: Float, night: Boolean) {
@@ -96,14 +98,22 @@ fun DrawScope.drawDayDecor(sunColor: Color) {
     drawCloud(Offset(w * 0.52f, h * 0.29f), h * 0.028f, alpha = 0.7f)
 }
 
-private fun DrawScope.drawCloud(center: Offset, r: Float, alpha: Float = 0.9f) {
-    val c = Color.White.copy(alpha = alpha)
-    val shade = Color(0xFFDCEAF7).copy(alpha = alpha)
-    drawRoundRect(shade, topLeft = Offset(center.x - r * 1.9f, center.y + r * 0.15f), size = Size(r * 3.8f, r * 0.9f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r * 0.45f))
-    drawCircle(c, r * 0.85f, Offset(center.x - r, center.y + r * 0.1f))
-    drawCircle(c, r * 1.15f, Offset(center.x, center.y - r * 0.3f))
-    drawCircle(c, r * 0.85f, Offset(center.x + r, center.y + r * 0.1f))
-    drawRoundRect(c, topLeft = Offset(center.x - r * 1.8f, center.y), size = Size(r * 3.6f, r * 0.8f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(r * 0.4f))
+private fun DrawScope.drawCloud(center: Offset, r: Float, alpha: Float = 0.95f) {
+    // Flauschige Wolke aus vielen Kreisen: erst die Schattenschicht, dann die weißen Wölkchen, dann Glanzlichter
+    data class Puff(val dx: Float, val dy: Float, val rad: Float)
+    val puffs = listOf(
+        Puff(-1.9f, 0.25f, 0.75f), Puff(-1.3f, -0.15f, 0.95f), Puff(-0.6f, -0.55f, 1.1f),
+        Puff(0.2f, -0.85f, 1.25f), Puff(1.0f, -0.5f, 1.05f), Puff(1.65f, -0.05f, 0.9f),
+        Puff(2.1f, 0.3f, 0.7f), Puff(-0.9f, 0.35f, 0.9f), Puff(0.1f, 0.4f, 1.0f), Puff(1.1f, 0.35f, 0.9f),
+    )
+    val shade = Color(0xFFCFE1F3).copy(alpha = alpha)
+    val body = Color.White.copy(alpha = alpha)
+    puffs.forEach { p -> drawCircle(shade, p.rad * r, Offset(center.x + p.dx * r, center.y + (p.dy + 0.18f) * r)) }
+    puffs.forEach { p -> drawCircle(body, p.rad * r, Offset(center.x + p.dx * r, center.y + p.dy * r)) }
+    // Glanzlichter oben links an den Wölkchen
+    puffs.filter { it.dy < 0f }.forEach { p ->
+        drawCircle(Color(0xFFF2F8FF).copy(alpha = alpha), p.rad * r * 0.55f, Offset(center.x + (p.dx - 0.15f) * r, center.y + (p.dy - 0.2f) * r))
+    }
 }
 
 /** Blumen und Grasbüschel am Boden, an den Rändern (Runde 8). */
@@ -144,13 +154,53 @@ fun DrawScope.drawLandmarks(cave: Painter, sign: Painter, night: Boolean, showSi
     ) else null
     val c = SceneLandmarks.cave(w, h)
     translate(c.left, c.top) { with(cave) { draw(Size(c.width, c.height), colorFilter = filter) } }
+    // „Dungeon“ leicht geschwungen über dem Berg
+    drawArchedText("Dungeon", c.center.x, c.top - h * 0.012f, c.width * 0.62f, h * 0.022f, h * 0.030f, night)
     if (showSign) {
         val s = SceneLandmarks.sign(w, h)
         translate(s.left, s.top) { with(sign) { draw(Size(s.width, s.height), colorFilter = filter) } }
+        // „Garten“ steht auf dem Brett (Brettmitte im Vektor: x 23/60, y 18/40)
+        drawFlatText("Garten", s.left + s.width * 23f / 60f, s.top + s.height * 18f / 40f, s.height * 0.24f, night)
     }
 }
 
-/** Antippbare Flächen über Höhle und Wegweiser mit kleinen Beschriftungen. */
+private fun DrawScope.textPaint(sizePx: Float, fill: Boolean, color: Int, strokeColor: Int = 0): android.graphics.Paint =
+    android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = sizePx
+        textAlign = android.graphics.Paint.Align.CENTER
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        if (fill) { style = android.graphics.Paint.Style.FILL; this.color = color }
+        else { style = android.graphics.Paint.Style.STROKE; strokeWidth = sizePx * 0.18f; this.color = strokeColor; strokeJoin = android.graphics.Paint.Join.ROUND }
+    }
+
+/** Gerader Text mit hellem Rand, mittig um (cx, cy). */
+private fun DrawScope.drawFlatText(text: String, cx: Float, cy: Float, sizePx: Float, night: Boolean) {
+    val fill = if (night) 0xFFFFF3D6.toInt() else 0xFFFFF3D6.toInt()
+    val edge = 0xFF4A3420.toInt()
+    drawIntoCanvas { c ->
+        val y = cy + sizePx * 0.35f
+        c.nativeCanvas.drawText(text, cx, y, textPaint(sizePx, false, 0, edge))
+        c.nativeCanvas.drawText(text, cx, y, textPaint(sizePx, true, fill))
+    }
+}
+
+/** Text auf einem flachen Bogen (Mitte höher als die Ränder), zentriert auf (cx, baseY). */
+private fun DrawScope.drawArchedText(text: String, cx: Float, baseY: Float, halfWidth: Float, arch: Float, sizePx: Float, night: Boolean) {
+    val fill = if (night) 0xFFFFF3D6.toInt() else 0xFF3D2E6B.toInt()
+    val edge = if (night) 0xFF1B1740.toInt() else 0xFFFFFFFF.toInt()
+    val path = android.graphics.Path().apply {
+        moveTo(cx - halfWidth, baseY)
+        quadTo(cx, baseY - arch * 2f, cx + halfWidth, baseY)
+    }
+    // Der Text ist mittig ausgerichtet; hOffset = halbe Pfadlänge setzt ihn in die Mitte des Bogens
+    val mid = android.graphics.PathMeasure(path, false).length / 2f
+    drawIntoCanvas { c ->
+        c.nativeCanvas.drawTextOnPath(text, path, mid, 0f, textPaint(sizePx, false, 0, edge))
+        c.nativeCanvas.drawTextOnPath(text, path, mid, 0f, textPaint(sizePx, true, fill))
+    }
+}
+
+/** Antippbare Flächen über Höhle und Wegweiser. Die Beschriftungen sind Teil der Zeichnung. */
 @Composable
 fun BoxScope.LandmarkTargets(onDungeon: () -> Unit, onGarden: () -> Unit, showGarden: Boolean = true) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -158,28 +208,18 @@ fun BoxScope.LandmarkTargets(onDungeon: () -> Unit, onGarden: () -> Unit, showGa
         val h = constraints.maxHeight.toFloat()
         val density = LocalDensity.current
         @Composable
-        fun target(r: Rect, label: String, onClick: () -> Unit) {
+        fun target(r: Rect, label: String, extraTop: Float, onClick: () -> Unit) {
             // etwas größer als die Zeichnung, damit sie leicht zu treffen ist
             val pad = 6f * density.density
-            val rr = Rect(r.left - pad, r.top - pad, r.right + pad, r.bottom + pad + 22f * density.density)
+            val rr = Rect(r.left - pad, r.top - pad - extraTop, r.right + pad, r.bottom + pad)
             Box(
                 Modifier
                     .offset { IntOffset(rr.left.roundToInt(), rr.top.roundToInt()) }
                     .size(with(density) { rr.width.toDp() }, with(density) { rr.height.toDp() })
                     .clickable(onClickLabel = label, onClick = onClick),
-            ) {
-                Text(
-                    label,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp,
-                    color = Color(0xFF3D2E6B),
-                    maxLines = 1,
-                    modifier = Modifier.align(androidx.compose.ui.Alignment.BottomCenter),
-                )
-            }
+            )
         }
-        target(SceneLandmarks.cave(w, h), "Dungeon", onDungeon)
-        if (showGarden) target(SceneLandmarks.sign(w, h), "Garten", onGarden)
+        target(SceneLandmarks.cave(w, h), "Dungeon", h * 0.04f, onDungeon)
+        if (showGarden) target(SceneLandmarks.sign(w, h), "Garten", 0f, onGarden)
     }
 }

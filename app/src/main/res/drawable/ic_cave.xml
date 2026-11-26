@@ -37,7 +37,22 @@
         android:pathData="M58,152 Q60,144 68,144 Q76,144 78,152 Z" />
     <path android:fillColor="#8E8E99"
         android:pathData="M124,152 Q126,146 133,146 Q141,146 143,152 Z" />
-    <!-- X im Eingang -->
-    <path android:strokeColor="#E5484D" android:strokeWidth="5" android:strokeLineCap="round"
-        android:pathData="M88,122 L112,146 M112,122 L88,146" />
+    <!-- Schwert 1 (von links unten nach rechts oben) -->
+    <path android:fillColor="#D9DEE8"
+        android:pathData="M91.4,139.4 L109.8,121.8 L114,120 L112.2,124.2 L94.6,142.6 Z" />
+    <path android:strokeColor="#C9A24B" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M89.5,137.5 L96.5,144.5" />
+    <path android:strokeColor="#6A4A2C" android:strokeWidth="3.5" android:strokeLineCap="round"
+        android:pathData="M93,141 L87,147" />
+    <path android:fillColor="#C9A24B"
+        android:pathData="M86,145.7 m-2.3,0 a2.3,2.3 0 1,0 4.6,0 a2.3,2.3 0 1,0 -4.6,0" />
+    <!-- Schwert 2 (von rechts unten nach links oben), liegt darüber -->
+    <path android:fillColor="#B8BFCF"
+        android:pathData="M108.6,139.4 L90.2,121.8 L86,120 L87.8,124.2 L105.4,142.6 Z" />
+    <path android:strokeColor="#C9A24B" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M110.5,137.5 L103.5,144.5" />
+    <path android:strokeColor="#6A4A2C" android:strokeWidth="3.5" android:strokeLineCap="round"
+        android:pathData="M107,141 L113,147" />
+    <path android:fillColor="#C9A24B"
+        android:pathData="M114,145.7 m-2.3,0 a2.3,2.3 0 1,0 4.6,0 a2.3,2.3 0 1,0 -4.6,0" />
 </vector>

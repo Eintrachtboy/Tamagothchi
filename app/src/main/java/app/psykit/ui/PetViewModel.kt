@@ -141,6 +141,10 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         _message.value = r.message
         if (r.reaction != Reaction.NONE) _reaction.value = ReactionEvent(_reaction.value.id + 1, r.reaction)
     }
+    /** Lernstand pro Tierchen: Startseite dieses Spiels gesehen (Befund 34). */
+    fun markIntroSeen(kind: GameKind) = repo.update { s, _ ->
+        (if (kind.name in s.gamesIntroSeen) s else s.copy(gamesIntroSeen = s.gamesIntroSeen + kind.name)) to Unit
+    }
     fun todaysGame(): GameKind = GameKind.dailyOn(PetEngine.epochDay(System.currentTimeMillis(), repo.zone))
 
     fun rename(name: String) = repo.update { s, _ -> PetEngine.rename(s, name) to Unit }

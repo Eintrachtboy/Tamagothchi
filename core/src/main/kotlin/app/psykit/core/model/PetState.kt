@@ -54,6 +54,8 @@ data class PetState(
     val scratchRewardDay: Long = -1,
     val scratchRewardsToday: Int = 0,
     val lastScratchRewardAt: Long = 0,
+    // Minispiele, deren Startseite dieses Tierchen schon gesehen hat (Befund 34, Lernstand pro Tier)
+    val gamesIntroSeen: List<String> = emptyList(),
     // Schmutz durch Spaziergänge
     val walkSteps: Long = 0,
     val dirt: Int = 0,

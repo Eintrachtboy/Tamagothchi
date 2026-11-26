@@ -570,7 +570,7 @@ fun PetScreen(vm: PetViewModel) {
     if (saveLocked) RecoveryScreen(vm, onOtherPet = { showPets = true })
 }
 
-private fun gameInfo(k: GameKind) = when (k) {
+internal fun gameInfo(k: GameKind) = when (k) {
     GameKind.HIDE_SEEK -> "Dein Tierchen versteckt sich hinter einer von drei Wolken. Die Wolken mischen sich, du findest es."
     GameKind.MEMORY -> "Dreh Karten um und finde die passenden Psi-Symbole."
     GameKind.BUBBLES -> "Bring in ${BUBBLES_SECONDS} Sekunden so viele Seifenblasen wie möglich zum Platzen."

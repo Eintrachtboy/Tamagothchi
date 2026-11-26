@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,6 +47,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -91,6 +93,10 @@ fun GameDialog(
     onCancel: () -> Unit,
 ) {
     var result by remember { mutableStateOf<Triple<Int, Int, Int>?>(null) }
+    // Befund 18/34: Startseite vor jeder Runde. 0 = Start, 1 = gewertete Runde, 2 = Ausprobieren (ohne Belohnung)
+    var phase by remember { mutableStateOf(0) }
+    var round by remember { mutableStateOf(0) }
+    val firstTime = remember { kind.name !in s.gamesIntroSeen }
     // In den Spielen immer dein Standardbild („Normal“) zeigen
     val sprite = remember(s.stage) { vm.sprites.load(s.stage, SpriteVariant.BASE) ?: sprite }
     // Vollbild im App-Fenster statt eigenem Dialog-Fenster, damit unten nichts unter der Navigationsleiste verschwindet
@@ -105,7 +111,28 @@ fun GameDialog(
                 Spacer(Modifier.height(8.dp))
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     val r = result
-                    if (r != null) {
+                    if (phase == 0) {
+                        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                            PetIcon(sprite, s.stage, Mood.HAPPY, 120.dp)
+                            Spacer(Modifier.height(12.dp))
+                            if (firstTime) Text("Neu für ${s.name}!", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text(gameInfo(kind), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
+                            Spacer(Modifier.height(6.dp))
+                            Text("Zeit und Wertung starten erst mit „Spielen“.", style = MaterialTheme.typography.bodySmall)
+                            Spacer(Modifier.height(16.dp))
+                            Button(onClick = { vm.markIntroSeen(kind); result = null; round++; phase = 1 }) { Text("▶ Spielen") }
+                            // Besuch verändert zwei Tierchen; dort gibt es keine Übungsrunde
+                            if (kind != GameKind.VISIT) OutlinedButton(onClick = { result = null; round++; phase = 2 }) { Text("Ausprobieren (ohne Belohnung)") }
+                        }
+                    } else if (r != null && phase == 2) {
+                        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Übung vorbei: ${r.first} von ${r.second}", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                            Text("Übungsrunden geben keine Belohnung.", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.height(16.dp))
+                            Button(onClick = { vm.markIntroSeen(kind); result = null; round++; phase = 1 }) { Text("▶ Jetzt spielen") }
+                            OutlinedButton(onClick = { result = null; round++; phase = 2 }) { Text("Nochmal üben") }
+                        }
+                    } else if (r != null) {
                         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                             PetIcon(sprite, s.stage, if (r.first * 2 >= r.second) Mood.HAPPY else Mood.OK, 140.dp)
                             Spacer(Modifier.height(12.dp))
@@ -124,7 +151,8 @@ fun GameDialog(
                         }
                     } else {
                         val done: (Int, Int, Int) -> Unit = { a, b, c -> result = Triple(a, b, c) }
-                        when (kind) {
+                        // key(round): jede Runde startet frisch, Timer laufen erst ab hier
+                        key(round) { when (kind) {
                             GameKind.HIDE_SEEK -> HideSeekGame(sprite, s, done)
                             GameKind.MEMORY -> MemoryGame(done)
                             GameKind.BUBBLES -> BubblesGame(done)
@@ -135,7 +163,7 @@ fun GameDialog(
                             GameKind.COOK -> CookGame(sprite, s, done)
                             GameKind.CLOUDS -> CloudHopGame(sprite, s, done)
                             GameKind.VISIT -> VisitGame(vm, sprite, s, done)
-                        }
+                        } }
                     }
                 }
             }

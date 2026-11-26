@@ -11,13 +11,13 @@ enum class AttackType(val label: String, val emoji: String, val physical: Boolea
 }
 
 /** Körper der Gegner. Bestimmt zusammen mit dem Attackentyp, wie gut eine Attacke wirkt. */
-enum class Body(val label: String) {
-    SOFT("Weich"),
-    ARMORED("Gepanzert"),
-    QUICK("Flink"),
-    PLANT("Pflanze"),
-    EMBER("Glut"),
-    GHOST("Geist"),
+enum class Body(val label: String, val emoji: String) {
+    SOFT("Weich", "🧸"),
+    ARMORED("Gepanzert", "🛡️"),
+    QUICK("Flink", "💨"),
+    PLANT("Pflanze", "🌿"),
+    EMBER("Glut", "🌋"),
+    GHOST("Geist", "👻"),
 }
 
 object TypeChart {

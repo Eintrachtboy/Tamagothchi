@@ -6,7 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -524,13 +523,20 @@ private fun BattleView(vm: PetViewModel, s: PetState, st: BattleState, sprite: S
 
             // Runde 15: Typ-Matrix, Spalte des gewählten Gegners hervorgehoben
             var showTypes by remember { mutableStateOf(false) }
-            TextButton(onClick = { showTypes = true }) { Text("📊 Was wirkt gegen " + (selected?.body?.label ?: "wen") + "?") }
-            if (showTypes) androidx.compose.material3.AlertDialog(
+            TextButton(onClick = { showTypes = true }) { Text("📊 Was wirkt gegen " + (selected?.body?.let { "${it.emoji} ${it.label}" } ?: "wen") + "?") }
+            if (showTypes) androidx.compose.ui.window.Dialog(
                 onDismissRequest = { showTypes = false },
-                confirmButton = { TextButton(onClick = { showTypes = false }) { Text("Schließen") } },
-                title = { Text("Attackentyp gegen Körper") },
-                text = { TypeMatrix(selected?.body) },
-            )
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+            ) {
+                Card(Modifier.fillMaxWidth().padding(12.dp)) {
+                    Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
+                        Text("Was wirkt gegen " + (selected?.body?.let { "${it.emoji} ${it.label}" } ?: "die Gegner") + "?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        TypeMatrix(selected?.body)
+                        TextButton(onClick = { showTypes = false }, modifier = Modifier.align(Alignment.End)) { Text("Schließen") }
+                    }
+                }
+            }
 
             // Kampfbericht: feste Höhe, springt ans Ende
             val logScroll = rememberScrollState()
@@ -623,7 +629,7 @@ private fun EnemyCard(e: Fighter, st: BattleState, selected: Boolean, modifier: 
         e.intent?.let { Text("${it.kind.emoji} ${it.label}", fontSize = 10.sp, maxLines = 1, fontWeight = FontWeight.Bold, color = if (it.kind.name == "BIG" || it.kind.name == "CHARGE") Color(0xFFE5484D) else MaterialTheme.colorScheme.onSurface) }
         Text(e.emoji, fontSize = if (e.boss != null) 52.sp else 36.sp)
         Text(e.name, fontSize = 11.sp, maxLines = 1, fontWeight = FontWeight.Bold)
-        Text((e.body?.label ?: "") + (e.role?.let { " · ${it.label}" } ?: "") + " · Lv ${e.level}", fontSize = 9.sp, maxLines = 1)
+        Text((e.body?.let { "${it.emoji} ${it.label}" } ?: "") + (e.role?.let { " · ${it.label}" } ?: "") + " · Lv ${e.level}", fontSize = 9.sp, maxLines = 1)
         LinearProgressIndicator(
             progress = { e.hpPct().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(6.dp),
             color = if (e.hpPct() < 0.3f) Color(0xFFE5484D) else Color(0xFF46A758), trackColor = MaterialTheme.colorScheme.surfaceVariant, strokeCap = StrokeCap.Round,
@@ -641,7 +647,7 @@ private fun EnemyCard(e: Fighter, st: BattleState, selected: Boolean, modifier: 
     }
 }
 
-/** Runde 15: Matrix Attackentyp × Gegnerkörper aus TypeChart. [highlight] hebt eine Spalte hervor. */
+/** Runde 15/16: Matrix Attackentyp × Gegnerkörper aus TypeChart, volle Breite. [highlight] hebt eine Spalte hervor. */
 @Composable
 internal fun TypeMatrix(highlight: Body? = null) {
     fun color(f: Double) = when {
@@ -651,32 +657,37 @@ internal fun TypeMatrix(highlight: Body? = null) {
         f < 1.0 -> Color(0xFFF5A35C)
         else -> Color(0x22888888)
     }
-    val cell = Modifier.width(46.dp).padding(1.dp)
-    Column(Modifier.horizontalScroll(rememberScrollState())) {
-        Row {
-            Box(Modifier.width(72.dp))
+    fun factorText(f: Double) = "×" + if (f == f.toInt().toDouble()) f.toInt().toString() else f.toString().replace('.', ',')
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Box(Modifier.width(84.dp))
             Body.entries.forEach { b ->
-                Text(b.label, cell, fontSize = 9.sp, maxLines = 1, textAlign = TextAlign.Center,
-                    fontWeight = if (b == highlight) FontWeight.Bold else FontWeight.Normal,
-                    color = if (b == highlight) Gold else Color.Unspecified)
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(b.emoji, fontSize = 18.sp)
+                    Text(b.label, fontSize = 11.sp, maxLines = 1, textAlign = TextAlign.Center,
+                        fontWeight = if (b == highlight) FontWeight.Bold else FontWeight.Normal,
+                        color = if (b == highlight) Gold else Color.Unspecified)
+                }
             }
         }
         AttackType.entries.forEach { t ->
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("${t.emoji} ${t.label}", Modifier.width(72.dp), fontSize = 10.sp, maxLines = 1)
+            Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${t.emoji} ${t.label}", Modifier.width(84.dp), fontSize = 13.sp, maxLines = 1)
                 Body.entries.forEach { b ->
                     val f = TypeChart.factor(t, b)
-                    Box(
-                        cell.height(28.dp)
-                            .background(color(f), RoundedCornerShape(6.dp))
-                            .then(if (b == highlight) Modifier.border(2.dp, Gold, RoundedCornerShape(6.dp)) else Modifier),
-                        contentAlignment = Alignment.Center,
+                    Column(
+                        Modifier.weight(1f).padding(horizontal = 1.dp).height(42.dp)
+                            .background(color(f), RoundedCornerShape(8.dp))
+                            .then(if (b == highlight) Modifier.border(2.dp, Gold, RoundedCornerShape(8.dp)) else Modifier),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
                     ) {
-                        Text(TypeChart.symbol(f) + " ×" + (if (f == f.toInt().toDouble()) f.toInt().toString() else f.toString().replace('.', ',')), fontSize = 9.sp, maxLines = 1)
+                        Text(TypeChart.symbol(f), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(factorText(f), fontSize = 11.sp, maxLines = 1)
                     }
                 }
             }
         }
-        Text("++ sehr effektiv · + effektiv · · normal · − wenig · −− fast wirkungslos", fontSize = 9.sp, modifier = Modifier.padding(top = 4.dp))
+        Text("++ sehr effektiv · + effektiv · · normal · − wenig · −− fast wirkungslos", fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
     }
 }

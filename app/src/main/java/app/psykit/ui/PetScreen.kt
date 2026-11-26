@@ -395,13 +395,18 @@ fun PetScreen(vm: PetViewModel) {
                     floating = floating,
                     wear = Wearables.of(s, headPoint),
                     footprintIn = footprint,
-                    showLandmarks = true,
+                    showLandmarks = !isEgg,
+                    // Variante b: Der Wegweiser verschwindet, solange rechts die Werkzeugleiste offen ist
+                    showSign = !(mode == Mode.FEED || mode == Mode.CLEAN || mode == Mode.SLEEP),
                     overlay = {
                         // Zustandsringe am oberen Bildrand (Runde 3)
                         if (!isEgg) Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) { MiniStats(s) { statHint = it } }
                         // Runde 4: Höhle (Dungeon) und Wegweiser (Garten) im linken freien Rand der Szene
                         // Runde 7: Höhle und Wegweiser sind Teil des Hintergrunds; hier nur die Tippflächen
-                        if (!isEgg) LandmarkTargets(onDungeon = { showDungeon = true }, onGarden = { mode = Mode.GARDEN })
+                        if (!isEgg) LandmarkTargets(
+                            onDungeon = { showDungeon = true }, onGarden = { mode = Mode.GARDEN },
+                            showGarden = !(mode == Mode.FEED || mode == Mode.CLEAN || mode == Mode.SLEEP),
+                        )
                         // Seitliche Leiste rechts im freien Rand neben der Figur (Runde 3)
                         if (!isEgg) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp, top = 52.dp)) {
                             CareTray(

@@ -177,6 +177,8 @@ fun PetScene(
     sceneHeight: androidx.compose.ui.unit.Dp? = 340.dp,
     /** Runde 7: Höhle (Dungeon) und Wegweiser (Garten) als Teil des Hintergrunds zeichnen. */
     showLandmarks: Boolean = false,
+    /** Wegweiser zum Garten zeigen (fehlt, solange rechts die Werkzeugleiste offen ist). */
+    showSign: Boolean = true,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val dressed = wear?.takeIf { stage != Stage.EGG && !it.empty }
@@ -246,17 +248,13 @@ fun PetScene(
                 drawCircle(skyColors(phase)[0], h * 0.062f, Offset(w * 0.85f, h * 0.14f))
             } else {
                 val sunColor = if (phase == DayPhase.EVENING) Color(0xFFFF9E7A) else Color(0xFFFFE07A)
-                drawCircle(sunColor.copy(alpha = 0.35f), h * 0.11f, Offset(w * 0.83f, h * 0.17f))
-                drawCircle(sunColor, h * 0.075f, Offset(w * 0.83f, h * 0.17f))
-                val cloud = Color.White.copy(alpha = 0.8f)
-                drawCircle(cloud, h * 0.05f, Offset(w * 0.18f, h * 0.18f))
-                drawCircle(cloud, h * 0.065f, Offset(w * 0.25f, h * 0.15f))
-                drawCircle(cloud, h * 0.045f, Offset(w * 0.32f, h * 0.19f))
+                drawDayDecor(sunColor)
             }
             drawHills(night)
-            if (showLandmarks) drawLandmarks(caveArt, signArt, night)
+            if (showLandmarks) drawLandmarks(caveArt, signArt, night, showSign)
             val groundColor = if (night) Color(0xFF2A2452) else Color(0xFFCDEBC0)
             drawOval(groundColor, topLeft = Offset(-w * 0.2f, h * 0.8f), size = androidx.compose.ui.geometry.Size(w * 1.4f, h * 0.5f))
+            drawGroundDetails(night)
             if (custom != null) {
                 // Schatten unter eigenen Bildern, wird kleiner, wenn die Figur hochschwebt
                 val sw = w * 0.3f * (if (floating) 1f - 0.15f * bob else 1f)

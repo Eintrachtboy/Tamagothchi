@@ -154,6 +154,10 @@ fun PetScreen(vm: PetViewModel) {
     val isEgg = s.stage == Stage.EGG
     val current by rememberUpdatedState(s)
 
+    // Befund 06: Körperzonen aus dem sichtbaren Umriss des eigenen Bildes (null = eingebaute Figur)
+    val density = LocalDensity.current.density
+    val footprint = rememberFootprint(sprite)
+
     // Geometrie für Drag & Drop (alles in Root-Koordinaten)
     var rootPos by remember { mutableStateOf(Offset.Zero) }
     var sceneTopLeft by remember { mutableStateOf(Offset.Zero) }
@@ -176,7 +180,6 @@ fun PetScreen(vm: PetViewModel) {
     val shower = tool == 1
     var toolPos by remember { mutableStateOf<Offset?>(null) }
     val spotCount = remember(cleanSession) { PetEngine.dirtSpots(s) }
-    val spots = remember(cleanSession) { dirtSpotPositions(spotCount, s.bornAt + cleanSession * 7919L) }
     val foam = remember(cleanSession) { FloatArray(spotCount) }
     val cleaned = remember(cleanSession) { BooleanArray(spotCount) }
     var cleanTick by remember { mutableIntStateOf(0) }
@@ -223,20 +226,36 @@ fun PetScreen(vm: PetViewModel) {
 
     fun local(root: Offset) = root - sceneTopLeft
 
+    val body = remember(footprint, headPoint, sceneSize, floating, mode) {
+        if (mode == Mode.GARDEN) null else SceneBody.of(footprint, headPoint, sceneSize.width.toFloat(), sceneSize.height.toFloat(), density, floating)
+    }
+    val bodyNow by rememberUpdatedState(body)
+    /** Zone unter dem Finger: bei eigenen Bildern nur auf sichtbaren Pixeln. */
+    fun zoneHere(p: Offset, size: IntSize): Zone? { val b = bodyNow; return if (b != null) b.zoneAt(p) else zoneAt(p, size) }
+    // Schmutzflecken liegen bei eigenen Bildern auf sichtbaren Körperpixeln (Befund 06), Anteile der Szene
+    val spots = remember(cleanSession, body) {
+        val seed = s.bornAt + cleanSession * 7919L
+        val b = body
+        if (b != null && sceneSize.width > 0 && sceneSize.height > 0) b.map.bodyPoints(spotCount, seed).map { p ->
+            val o = b.toScene(p); Offset(o.x / sceneSize.width, o.y / sceneSize.height)
+        } else dirtSpotPositions(spotCount, seed)
+    }
+    fun scratchAt(z: Zone) { val m = bodyNow?.map; vm.scratch(z, m?.let { map -> { a: Zone, t: Zone -> map.hint(a, t) } }) }
+
     val sceneInteraction: Modifier = when (mode) {
         Mode.STROKE -> Modifier
             .pointerInput(Mode.STROKE) {
                 detectTapGestures(
                     onPress = { p ->
                         // Schon beim Auflegen zeigen, welche Stelle unter dem Finger liegt
-                        scratchLabel = zoneAt(p, size)?.label ?: ""
+                        scratchLabel = zoneHere(p, size)?.label ?: ""
                         scratchPos = p
                         tryAwaitRelease()
                         scratchPos = null; scratchLabel = ""
                     },
                     onLongPress = { p ->
-                        val z = zoneAt(p, size)
-                        if (z != null) vm.scratch(z) else vm.say("Halte den Finger direkt auf ${current.name}, um zu kraulen.")
+                        val z = zoneHere(p, size)
+                        if (z != null) scratchAt(z) else vm.say("Halte den Finger direkt auf ${current.name}, um zu kraulen.")
                     },
                 )
             }
@@ -342,8 +361,10 @@ fun PetScreen(vm: PetViewModel) {
                 dim = if (mode == Mode.SLEEP) 1f - light else 0f,
                 floating = floating,
                 wear = Wearables.of(s, headPoint),
+                footprintIn = footprint,
                 overlay = {
                     when (mode) {
+                        Mode.FEED -> body?.let { MouthMarker(it.mouth, dragFood != null) }
                         Mode.STROKE -> if (handPos == null) scratchPos?.let { p ->
                             HandEmoji("🤏", p)
                             if (scratchLabel.isNotEmpty()) Text(
@@ -389,7 +410,9 @@ fun PetScreen(vm: PetViewModel) {
                                     val f = dragFood
                                     dragFood = null
                                     if (f != null) {
-                                        if (mouthHit(local(dragPos), sceneSize)) vm.feed(f)
+                                        val b = body
+                                        val hit = if (b != null) b.mouthHit(local(dragPos), 56f * density) else mouthHit(local(dragPos), sceneSize)
+                                        if (hit) vm.feed(f)
                                         else vm.say("Zieh das Essen bis an ${s.name}s Mund.")
                                     }
                                 },
@@ -527,6 +550,17 @@ private fun androidx.compose.foundation.layout.BoxScope.HandEmoji(emoji: String,
         emoji, fontSize = 36.sp,
         modifier = Modifier.offset { IntOffset((p.x - 22.dp.toPx()).roundToInt(), (p.y - 26.dp.toPx()).roundToInt()) },
     )
+}
+
+/** Befund 15: zeigt, wo der Mund ist; beim Ziehen deutlicher. */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.MouthMarker(p: Offset, active: Boolean) {
+    Canvas(Modifier.fillMaxSize()) {
+        val r = 28.dp.toPx()
+        drawCircle(Color(0xFFFF9BC8).copy(alpha = if (active) 0.45f else 0.18f), r, p)
+        drawCircle(Color(0xFFE0569A).copy(alpha = if (active) 0.9f else 0.45f), r, p, style = Stroke(2.dp.toPx()))
+    }
+    if (active) Text("👄", fontSize = 18.sp, modifier = Modifier.offset { IntOffset((p.x - 11.dp.toPx()).roundToInt(), (p.y - 40.dp.toPx()).roundToInt()) })
 }
 
 @Composable

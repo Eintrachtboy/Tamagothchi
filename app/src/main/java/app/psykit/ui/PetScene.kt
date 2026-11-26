@@ -62,10 +62,67 @@ internal fun skyColors(phase: DayPhase) = when (phase) {
     DayPhase.NIGHT -> listOf(Color(0xFF151A3D), Color(0xFF3B2A63))
 }
 
-/** Bildmaße und wie weit unten (Anteil der Höhe) der unterste sichtbare Pixel liegt. */
-private data class Footprint(val w: Int, val h: Int, val bottom: Float)
+/**
+ * Bildmaße, wie weit unten (Anteil der Höhe) der unterste sichtbare Pixel liegt,
+ * und eine grobe Maske der sichtbaren Pixel (für Körperzonen, Befund 06).
+ */
+class Footprint(val w: Int, val h: Int, val bottom: Float, val maskCols: Int = 0, val maskRows: Int = 0, val mask: BooleanArray = BooleanArray(0))
 
-private fun footprintOf(sprite: Sprite): Footprint? = runCatching {
+/** Ränder der Figur in der Szene. Zeichnen und Trefferprüfung nutzen dieselben Werte. */
+val FIGURE_PAD_H = 60.dp
+val FIGURE_PAD_TOP = 40.dp
+fun figurePadBottom(floating: Boolean) = if (floating) 14.dp else 8.dp
+
+/** Verschiebung nach unten, damit eine stehende Figur mit ihrem untersten sichtbaren Pixel den Boden berührt. */
+fun groundShift(boxW: Float, boxH: Float, fp: Footprint?, floating: Boolean): Float =
+    if (!floating && fp != null && fp.w > 0 && fp.h > 0) {
+        val scale = kotlin.math.min(boxW / fp.w, boxH / fp.h)
+        val imgH = fp.h * scale
+        ((boxH - imgH) / 2f + imgH * (1f - fp.bottom)).coerceAtLeast(0f)
+    } else 0f
+
+/** Wo das Bild der Figur in der Szene liegt (Pixel), ohne Schwebe-Animation. */
+fun figureRect(sceneW: Float, sceneH: Float, density: Float, fp: Footprint, floating: Boolean): androidx.compose.ui.geometry.Rect {
+    val l = FIGURE_PAD_H.value * density; val t = FIGURE_PAD_TOP.value * density
+    val boxW = sceneW - 2 * l; val boxH = sceneH - t - figurePadBottom(floating).value * density
+    val scale = kotlin.math.min(boxW / fp.w, boxH / fp.h)
+    val w = fp.w * scale; val h = fp.h * scale
+    val top = t + (boxH - h) / 2f + groundShift(boxW, boxH, fp, floating)
+    return androidx.compose.ui.geometry.Rect(l + (boxW - w) / 2f, top, l + (boxW + w) / 2f, top + h)
+}
+
+@Composable
+fun rememberFootprint(sprite: Sprite?): Footprint? {
+    val fp by produceState<Footprint?>(null, sprite?.image, sprite?.animated) {
+        value = if (sprite == null) null else kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { footprintOf(sprite) }
+    }
+    return fp
+}
+
+private const val MASK = 48
+
+/** Grobe Maske der sichtbaren Pixel (Alpha > 40). */
+private fun maskOf(bmp: android.graphics.Bitmap): Triple<Int, Int, BooleanArray> {
+    val w = bmp.width; val h = bmp.height
+    if (w == 0 || h == 0) return Triple(0, 0, BooleanArray(0))
+    val cols = MASK; val rows = MASK
+    val m = BooleanArray(cols * rows)
+    val opaque = !bmp.hasAlpha()
+    for (cy in 0 until rows) for (cx in 0 until cols) {
+        if (opaque) { m[cy * cols + cx] = true; continue }
+        // mehrere Stichproben pro Zelle
+        var hit = false
+        loop@ for (sy in 0..2) for (sx in 0..2) {
+            val px = ((cx + (sx + 0.5f) / 3f) / cols * w).toInt().coerceIn(0, w - 1)
+            val py = ((cy + (sy + 0.5f) / 3f) / rows * h).toInt().coerceIn(0, h - 1)
+            if ((bmp.getPixel(px, py) ushr 24) > 40) { hit = true; break@loop }
+        }
+        m[cy * cols + cx] = hit
+    }
+    return Triple(cols, rows, m)
+}
+
+internal fun footprintOf(sprite: Sprite): Footprint? = runCatching {
     val anim = sprite.animated
     if (anim != null) {
         var w = 0; var h = 0
@@ -75,10 +132,13 @@ private fun footprintOf(sprite: Sprite): Footprint? = runCatching {
             val m = maxOf(w, h)
             if (m > 256) d.setTargetSize((w * 256f / m).toInt().coerceAtLeast(1), (h * 256f / m).toInt().coerceAtLeast(1))
         }
-        Footprint(w, h, opaqueBottom(bmp))
+        val (c, r, m) = maskOf(bmp)
+        Footprint(w, h, opaqueBottom(bmp), c, r, m)
     } else {
         val img = sprite.image ?: return null
-        Footprint(img.width, img.height, opaqueBottom(img.asAndroidBitmap()))
+        val bmp = img.asAndroidBitmap()
+        val (c, r, m) = maskOf(bmp)
+        Footprint(img.width, img.height, opaqueBottom(bmp), c, r, m)
     }
 }.getOrNull()
 
@@ -110,6 +170,8 @@ fun PetScene(
     dim: Float = 0f,
     floating: Boolean = true,
     wear: Wearables? = null,
+    /** Schon berechneter Umriss der Figur (damit Szene und Trefferprüfung denselben verwenden). */
+    footprintIn: Footprint? = null,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val dressed = wear?.takeIf { stage != Stage.EGG && !it.empty }
@@ -209,21 +271,15 @@ fun PetScene(
             val sway = when { !floating -> 0f; sleeping -> 1f; mood == Mood.HAPPY -> 4f; else -> 2.5f }
             // Auf dem Boden: Figur so weit absenken, dass ihr unterster sichtbarer Punkt den Boden berührt
             // (eigene Bilder haben oft unten einen leeren Rand).
-            val footprint by produceState<Footprint?>(null, custom.image, custom.animated) {
-                value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { footprintOf(custom) }
-            }
+            val own = rememberFootprint(if (footprintIn == null) custom else null)
+            val footprint = footprintIn ?: own
             val figure = Modifier
                 .fillMaxSize()
-                .padding(start = 60.dp, end = 60.dp, top = 40.dp, bottom = if (floating) 14.dp else 8.dp)
+                .padding(start = FIGURE_PAD_H, end = FIGURE_PAD_H, top = FIGURE_PAD_TOP, bottom = figurePadBottom(floating))
                 .graphicsLayer {
                     val jump = if (hop.value < 1f) sin(hop.value * PI.toFloat()) else 0f
                     transformOrigin = TransformOrigin(0.5f, 1f)
-                    val fp = footprint
-                    val ground = if (!floating && fp != null && fp.w > 0 && fp.h > 0) {
-                        val scale = kotlin.math.min(size.width / fp.w, size.height / fp.h)
-                        val imgH = fp.h * scale
-                        ((size.height - imgH) / 2f + imgH * (1f - fp.bottom)).coerceAtLeast(0f)
-                    } else 0f
+                    val ground = groundShift(size.width, size.height, footprint, floating)
                     translationY = -bob * amp + sink - jump * jumpHeight + ground
                     translationX = if (shake.value < 1f) sin(shake.value * 6f * PI.toFloat()) * 14f * (1f - shake.value) else 0f
                     // Atmen: leicht strecken und stauchen

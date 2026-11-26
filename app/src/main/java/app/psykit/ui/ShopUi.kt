@@ -1,5 +1,9 @@
 package app.psykit.ui
 
+import androidx.compose.material3.HorizontalDivider
+
+import androidx.compose.ui.layout.onSizeChanged
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -248,16 +252,24 @@ private object BattleEngineInfo {
 fun CollectionDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () -> Unit) {
     var tab by remember { mutableStateOf(0) }
     val headPoint by vm.headPoint.collectAsState()
+    val footprint = rememberFootprint(sprite)
+    var previewSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
     FullDialog("📖 Sammelbuch", s, onClose) {
-        // Vorschau mit allem, was gerade getragen wird
+        // Vorschau mit allem, was gerade getragen wird; im Tab „Sitz“ mit Körperpunkten (Befund 06)
+        val body = remember(footprint, headPoint, previewSize) {
+            SceneBody.of(footprint, headPoint, previewSize.width.toFloat(), previewSize.height.toFloat(), density, false)
+        }
         PetScene(
             stage = s.stage, mood = s.mood, sleeping = false, poops = 0,
             phase = app.psykit.core.engine.DayPhase.at(s.lastUpdate, vm.repo.zone),
             custom = sprite, customIsVariant = sprite?.exact == true,
             reaction = ReactionEvent(0, app.psykit.core.model.Reaction.NONE),
-            modifier = Modifier.fillMaxWidth().height(200.dp),
+            modifier = Modifier.fillMaxWidth().height(200.dp).onSizeChanged { previewSize = it },
             floating = false,
             wear = Wearables.of(s, headPoint),
+            footprintIn = footprint,
+            overlay = { if (tab == 5) body?.let { BodyMarkers(it) } },
         )
         Spacer(Modifier.height(6.dp))
         Tabs(listOf("🎩 Anziehen", "🏠 Deko", "⚔️ Attacken", "✨ Kombos", "🌱 Garten", "📐 Sitz"), tab) { tab = it }
@@ -373,5 +385,35 @@ private fun FitTab(vm: PetViewModel, h: HeadPoint, custom: Boolean) {
     slider("Höhe des Kopfes", h.y, 0f..0.8f) { vm.setHeadPoint(h.copy(y = it)) }
     slider("Kopfbreite", h.size, 0.15f..0.9f) { vm.setHeadPoint(h.copy(size = it)) }
     slider("Höhe der Augen", h.eyes, 0.05f..0.8f) { vm.setHeadPoint(h.copy(eyes = it)) }
+    // Befund 06: Mund und Schwanz für Füttern und Kraulen (ohne Einstellung automatisch aus dem Umriss)
+    HorizontalDivider()
+    Text("Mund und Schwanz", fontWeight = FontWeight.Bold)
+    Text(
+        "Der rosa Kreis ist der Mund (dorthin Futter ziehen), der grüne der Schwanz. Ohne Einstellung sucht die App beides selbst im Bild.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (h.mouthX == null) OutlinedButton(onClick = { vm.setHeadPoint(h.copy(mouthX = h.x, mouthY = (h.eyes + 0.12f).coerceAtMost(1f))) }, enabled = custom) { Text("Mund selbst einstellen") }
+    else {
+        slider("Mund links ↔ rechts", h.mouthX, 0f..1f) { vm.setHeadPoint(h.copy(mouthX = it)) }
+        slider("Mund Höhe", h.mouthY ?: 0.4f, 0f..1f) { vm.setHeadPoint(h.copy(mouthY = it)) }
+        TextButton(onClick = { vm.setHeadPoint(h.copy(mouthX = null, mouthY = null)) }) { Text("Mund automatisch") }
+    }
+    if (h.tailX == null) OutlinedButton(onClick = { vm.setHeadPoint(h.copy(tailX = 0.8f, tailY = 0.75f)) }, enabled = custom) { Text("Schwanz selbst einstellen") }
+    else {
+        slider("Schwanz links ↔ rechts", h.tailX, 0f..1f) { vm.setHeadPoint(h.copy(tailX = it)) }
+        slider("Schwanz Höhe", h.tailY ?: 0.75f, 0f..1f) { vm.setHeadPoint(h.copy(tailY = it)) }
+        TextButton(onClick = { vm.setHeadPoint(h.copy(tailX = null, tailY = null)) }) { Text("Schwanz automatisch") }
+    }
     OutlinedButton(onClick = { vm.setHeadPoint(HeadPoint()) }, enabled = custom) { Text("Zurücksetzen") }
+}
+
+/** Zeigt Kopf-, Mund- und Schwanzpunkt auf der Vorschau (Befund 06). */
+@Composable
+fun androidx.compose.foundation.layout.BoxScope.BodyMarkers(b: SceneBody) {
+    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+        val r = 10.dp.toPx()
+        drawCircle(androidx.compose.ui.graphics.Color(0xFFE0569A), r, b.mouth, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
+        drawCircle(androidx.compose.ui.graphics.Color(0xFF3FA66B), r, b.tail, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
+        drawRect(androidx.compose.ui.graphics.Color(0x553F6FD8), topLeft = b.rect.topLeft, size = b.rect.size, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+    }
 }

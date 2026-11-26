@@ -19,7 +19,12 @@ data class PackManifest(
         .apply { if (floating != null) put("float", floating) }
         .apply {
             val h = head?.split(',')?.mapNotNull { it.toFloatOrNull() }
-            if (h != null && h.size == 4) put("head", JSONObject().put("x", h[0].toDouble()).put("y", h[1].toDouble()).put("size", h[2].toDouble()).put("eyes", h[3].toDouble()))
+            if (h != null && (h.size == 4 || h.size == 8)) put("head", JSONObject().put("x", h[0].toDouble()).put("y", h[1].toDouble()).put("size", h[2].toDouble()).put("eyes", h[3].toDouble())
+                .apply {
+                    // Befund 06: optionale Mund- und Schwanzpunkte (fehlen = automatisch)
+                    if (h.size == 8 && h[4] >= 0f) put("mouth", JSONObject().put("x", h[4].toDouble()).put("y", h[5].toDouble()))
+                    if (h.size == 8 && h[6] >= 0f) put("tail", JSONObject().put("x", h[6].toDouble()).put("y", h[7].toDouble()))
+                })
         }
         .toString(2)
 
@@ -30,7 +35,12 @@ data class PackManifest(
             PackManifest(
                 o.optString("name", ""), o.optString("petName", ""), o.optString("author", ""),
                 if (o.has("float")) o.optBoolean("float", true) else null,
-                h?.let { "${it.optDouble("x", 0.5)},${it.optDouble("y", 0.1)},${it.optDouble("size", 0.42)},${it.optDouble("eyes", 0.3)}" },
+                h?.let {
+                    val base = "${it.optDouble("x", 0.5)},${it.optDouble("y", 0.1)},${it.optDouble("size", 0.42)},${it.optDouble("eyes", 0.3)}"
+                    val mo = it.optJSONObject("mouth"); val ta = it.optJSONObject("tail")
+                    if (mo == null && ta == null) base
+                    else base + ",${mo?.optDouble("x", -1.0) ?: -1.0},${mo?.optDouble("y", -1.0) ?: -1.0},${ta?.optDouble("x", -1.0) ?: -1.0},${ta?.optDouble("y", -1.0) ?: -1.0}"
+                },
             )
         }.getOrNull()
     }

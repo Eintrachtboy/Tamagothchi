@@ -269,7 +269,11 @@ object PetEngine {
         if (s.scratchTriedDay == epochDay(now, tz)) s.scratchTried else emptyList()
 
     /** Kraulen an einer Stelle. Jeden Tag gibt es eine geheime Lieblingsstelle. */
-    fun scratch(s: PetState, zone: Zone, now: Long, tz: ZoneId): ActionResult {
+    fun scratch(
+        s: PetState, zone: Zone, now: Long, tz: ZoneId,
+        /** Richtungstipp; bei eigenen Bildern aus den echten Zonenmitten der BodyMap (K3). */
+        hint: (from: Zone, to: Zone) -> String = { a, b -> a.hintTowards(b) },
+    ): ActionResult {
         blocked(s)?.let { return it }
         val today = epochDay(now, tz)
         val favorite = Zone.favoriteOn(today, s.bornAt)
@@ -289,7 +293,7 @@ object PetEngine {
             return withExp(ns, 5, "Volltreffer! Heute liebt ${s.name} es, an dieser Stelle gekrault zu werden (${zone.label}). Es macht einen Freudensprung!", Reaction.JUMP)
         }
         val misses = tried.count { it != favorite }
-        val hint = if (misses >= SCRATCH_REVEAL_AFTER) "Psst … heute ist es: ${favorite.label}!" else zone.hintTowards(favorite)
+        val hint = if (misses >= SCRATCH_REVEAL_AFTER) "Psst … heute ist es: ${favorite.label}!" else hint(zone, favorite)
         val text = "${zone.label}: ganz nett, aber nicht die Lieblingsstelle. $hint"
         if (!mayReward) return ActionResult(st, text, reaction = Reaction.NONE)
         return ActionResult(clamp(rewarded(st).copy(happiness = s.happiness + 1f)), text, reaction = Reaction.HAPPY)

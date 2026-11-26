@@ -9,6 +9,8 @@ import android.media.MediaRecorder
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntSize
 import androidx.core.content.ContextCompat
+import app.psykit.core.model.BodyMap
+import app.psykit.core.model.BodyPoint
 import app.psykit.core.model.Zone
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -27,6 +29,29 @@ fun petBoxPos(p: Offset, size: IntSize): Offset? {
     val top = size.height * 0.10f; val bottom = size.height * 0.95f
     if (p.x !in left..right || p.y !in top..bottom) return null
     return Offset((p.x - left) / (right - left), (p.y - top) / (bottom - top))
+}
+
+/**
+ * Körperzonen eines eigenen Bildes in Szenen-Pixeln (Befund 06): verbindet die [BodyMap]
+ * (Bildanteile) mit der Lage der Figur in der Szene ([figureRect]).
+ */
+class SceneBody(val rect: androidx.compose.ui.geometry.Rect, val map: BodyMap) {
+    fun toImage(p: Offset) = BodyPoint((p.x - rect.left) / rect.width, (p.y - rect.top) / rect.height)
+    fun toScene(b: BodyPoint) = Offset(rect.left + b.x * rect.width, rect.top + b.y * rect.height)
+    fun zoneAt(p: Offset): Zone? = map.zoneAt(toImage(p))
+    /** Toleranz in Szenen-Pixeln um den Mund. */
+    fun mouthHit(p: Offset, tolerancePx: Float): Boolean =
+        (p - toScene(map.mouth)).getDistance() <= tolerancePx
+    val mouth: Offset get() = toScene(map.mouth)
+    val tail: Offset get() = toScene(map.tail)
+
+    companion object {
+        fun of(fp: Footprint?, head: HeadPoint, sceneW: Float, sceneH: Float, density: Float, floating: Boolean): SceneBody? {
+            if (fp == null || fp.w <= 0 || fp.h <= 0 || fp.mask.isEmpty() || sceneW <= 0f || sceneH <= 0f) return null
+            val map = BodyMap(fp.maskCols, fp.maskRows, fp.mask, head.x, head.y, head.size, head.eyes, head.mouth, head.tail)
+            return SceneBody(figureRect(sceneW, sceneH, density, fp, floating), map)
+        }
+    }
 }
 
 /** Welche Körperstelle liegt unter dem Finger? */

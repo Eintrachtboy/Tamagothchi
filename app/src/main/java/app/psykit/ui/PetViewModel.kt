@@ -83,8 +83,9 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     fun feed(food: Food) = act { s, now -> PetEngine.track(PetEngine.feed(s, food, now), Quest.FEED) }
     fun stroke(speedDp: Float) = act { s, now -> PetEngine.track(PetEngine.stroke(s, speedDp, now), Quest.STROKE) }
-    fun scratch(zone: Zone) = act { s, now ->
-        val r = PetEngine.scratch(s, zone, now, repo.zone)
+    /** [hint]: Richtungstipp aus den echten Zonen eines eigenen Bildes (K3); null = eingebaute Figur. */
+    fun scratch(zone: Zone, hint: ((Zone, Zone) -> String)? = null) = act { s, now ->
+        val r = if (hint != null) PetEngine.scratch(s, zone, now, repo.zone, hint) else PetEngine.scratch(s, zone, now, repo.zone)
         if (r.reaction == Reaction.JUMP) PetEngine.track(r, Quest.SCRATCH) else r
     }
     fun clean(fraction: Float) = act { s, _ -> PetEngine.track(PetEngine.clean(s, fraction), Quest.CLEAN) }

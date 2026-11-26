@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -79,7 +80,7 @@ private const val BED_H = 0.13f
  * und kümmert sich um genau dieses Beet (Schnecke wegtragen, jäten, ernten, säen oder gießen).
  */
 @Composable
-fun GardenScene(vm: PetViewModel, s: PetState, sprite: Sprite?, seed: Berry, fertilizeMode: Boolean, onFertilized: () -> Unit, modifier: Modifier = Modifier) {
+fun GardenScene(vm: PetViewModel, s: PetState, sprite: Sprite?, seed: Berry, fertilizeMode: Boolean, onFertilized: () -> Unit, modifier: Modifier = Modifier, fixedHeight: androidx.compose.ui.unit.Dp? = 340.dp) {
     val zone = vm.repo.zone
     val now = s.lastUpdate
     val phase = DayPhase.at(now, zone)
@@ -125,7 +126,7 @@ fun GardenScene(vm: PetViewModel, s: PetState, sprite: Sprite?, seed: Berry, fer
     BoxWithConstraints(
         modifier
             .fillMaxWidth()
-            .height(340.dp)
+            .then(if (fixedHeight != null) Modifier.height(fixedHeight) else Modifier.fillMaxHeight())
             .clip(RoundedCornerShape(28.dp))
             .background(Brush.verticalGradient(skyColors(phase)))
             .pointerInput(beds.size, busyBed, seed, fertilizeMode, s.lastUpdate) {
@@ -282,42 +283,34 @@ private fun DrawScope.drawWeed(at: Offset, h: Float) {
 /** Unter dem Gartenbild: Saatgut, Dünger, Vorrat, Mixer und Überblick über alle Beete. */
 @Composable
 fun GardenPanel(s: PetState, vm: PetViewModel, seed: Berry, onSeed: (Berry) -> Unit, fertilizeMode: Boolean, onFertilizeMode: (Boolean) -> Unit) {
-    val now = s.lastUpdate
     var showMixer by remember { mutableStateOf(false) }
-    // Weniger Text: Der Zustand jedes Beets steht direkt am Beet im Bild.
-    Text("🌱 Saat (für freie Beete)", fontWeight = FontWeight.Bold)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    // Runde 12: kompakt, ohne Scrollen. Zustand der Beete steht am Beet im Bild, Vorrat (naschen) liegt im Füttern-Modus.
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text("🌱", fontSize = 18.sp)
         Berry.entries.forEach { b ->
             val price = when {
                 b.seedPrice < 0 -> "${s.goldSeeds}×"
                 b.seedPrice == 0 -> "gratis"
-                else -> "${b.seedPrice} ✨"
+                else -> "${b.seedPrice}✨"
             }
-            FilterChip(selected = seed == b, onClick = { onSeed(b) }, label = { Text("${b.emoji} $price") }, enabled = b.seedPrice >= 0 || s.goldSeeds > 0)
+            FilterChip(
+                selected = seed == b, onClick = { onSeed(b) },
+                label = { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) { BerryIcon(b, 20.dp); Text(price) } },
+                enabled = b.seedPrice >= 0 || s.goldSeeds > 0,
+            )
         }
     }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        FilterChip(selected = fertilizeMode, onClick = { onFertilizeMode(!fertilizeMode) }, enabled = s.fertilizer > 0 || fertilizeMode, label = { Text("🧪 Düngen (${s.fertilizer})") })
-        Text("♻️ ${s.compost}/${GardenEngine.COMPOST_PER_FERTILIZER}", style = MaterialTheme.typography.labelMedium)
+    Row(Modifier.horizontalScroll(rememberScrollState()), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        FilterChip(selected = fertilizeMode, onClick = { onFertilizeMode(!fertilizeMode) }, enabled = s.fertilizer > 0 || fertilizeMode, label = { Text("🧪 ${s.fertilizer}  ♻️ ${s.compost}/${GardenEngine.COMPOST_PER_FERTILIZER}") })
+        OutlinedButton(onClick = { showMixer = true }, contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp)) { Text("🥤 Mixer") }
+        GardenEngine.nextBed(s)?.let { k ->
+            OutlinedButton(
+                onClick = { vm.unlockBed() }, enabled = s.level >= GardenEngine.BED_LEVELS[k] && s.stardust >= GardenEngine.BED_PRICES[k],
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+            ) { Text("🔓 Beet ${k + 4} · ${GardenEngine.BED_PRICES[k]}✨") }
+        }
     }
     if (fertilizeMode) Text("Pflanze antippen: +${GardenEngine.fertilizerPercent} % Wachstum.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-
-    Text("🧺 Vorrat (antippen = naschen)", fontWeight = FontWeight.Bold)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Berry.entries.forEach { b ->
-            val n = GardenEngine.count(s, b)
-            OutlinedButton(onClick = { vm.eatBerry(b) }, enabled = n > 0) { Text("${b.emoji} $n") }
-        }
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = { showMixer = true }) { Text("🥤 Smoothie-Mixer") }
-        if (s.psiBerries >= 2) OutlinedButton(onClick = { vm.brewPsiPotion() }) { Text("💜→🧪 Psi-Trank") }
-    }
-    GardenEngine.nextBed(s)?.let { k ->
-        OutlinedButton(onClick = { vm.unlockBed() }, enabled = s.level >= GardenEngine.BED_LEVELS[k] && s.stardust >= GardenEngine.BED_PRICES[k]) {
-            Text("🔓 Beet ${k + 4} freischalten · ${GardenEngine.BED_PRICES[k]} ✨ (ab Level ${GardenEngine.BED_LEVELS[k]})")
-        }
-    }
     if (showMixer) MixerDialog(s, vm, onDismiss = { showMixer = false })
 }
 
@@ -336,12 +329,15 @@ fun MixerDialog(s: PetState, vm: PetViewModel, onDismiss: () -> Unit) {
                 Berry.entries.forEachIndexed { i, b ->
                     val have = GardenEngine.count(s, b)
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${b.emoji} ${b.label} (hast $have)", Modifier.weight(1f))
+                        BerryIcon(b, 22.dp)
+                        Spacer(Modifier.width(6.dp))
+                        Text("${b.label} (hast $have)", Modifier.weight(1f))
                         TextButton(onClick = { counts.value = c.copyOf().also { it[i] = maxOf(0, it[i] - 1) } }, enabled = c[i] > 0) { Text("−") }
                         Text("${c[i]}", fontWeight = FontWeight.Bold)
                         TextButton(onClick = { counts.value = c.copyOf().also { it[i] = it[i] + 1 } }, enabled = total < 3 && c[i] < have) { Text("+") }
                     }
                 }
+                if (s.psiBerries >= 2) OutlinedButton(onClick = { vm.brewPsiPotion(); onDismiss() }) { Text("💜→🧪 Psi-Trank brauen (2 Psi-Beeren)") }
                 Text("Rezeptbuch", fontWeight = FontWeight.Bold)
                 Smoothie.entries.forEach { sm ->
                     val known = sm.name in s.smoothiesFound

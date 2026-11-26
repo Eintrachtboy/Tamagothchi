@@ -94,6 +94,7 @@ import app.psykit.core.engine.LevelSystem
 import app.psykit.core.engine.PetEngine
 import app.psykit.core.model.Berry
 import app.psykit.core.model.Food
+import app.psykit.core.engine.GardenEngine
 import app.psykit.core.model.GameKind
 import app.psykit.core.model.PetState
 import app.psykit.core.model.Stage
@@ -447,6 +448,7 @@ fun PetScreen(vm: PetViewModel) {
                                     }
                                 },
                                 onFoodTap = { f -> vm.feed(f) },
+                                onEatBerry = { b -> vm.eatBerry(b) },
                             )
                         }
                         when (mode) {
@@ -491,18 +493,17 @@ fun PetScreen(vm: PetViewModel) {
                 GardenScene(
                     vm, s, sprite, gardenSeed, fertilizeMode,
                     onFertilized = { fertilizeMode = false },
-                    modifier = Modifier.onGloballyPositioned {
+                    modifier = Modifier.weight(1f).onGloballyPositioned {
                         val b = it.boundsInRoot()
                         sceneTopLeft = b.topLeft
                         sceneSize = it.size
                     },
+                    fixedHeight = null,
                 )
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    MessageText(message.ifEmpty { statusLine(s) })
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.padding(12.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GardenPanel(s, vm, gardenSeed, { gardenSeed = it }, fertilizeMode, { fertilizeMode = it })
-                        }
+                MessageText(message.ifEmpty { statusLine(s) })
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(Modifier.padding(10.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        GardenPanel(s, vm, gardenSeed, { gardenSeed = it }, fertilizeMode, { fertilizeMode = it })
                     }
                 }
             } else {
@@ -717,7 +718,7 @@ private fun ModeBar(mode: Mode, onSelect: (Mode) -> Unit) {
 private fun CareTray(
     mode: Mode, s: PetState, dragging: Food?, tool: Int, onTool: (Int) -> Unit, onDone: () -> Unit,
     light: Float, onLight: (Float) -> Unit, humming: Boolean, hummed: Boolean, onHum: () -> Unit, onWake: () -> Unit,
-    onFoodStart: (Food, Offset) -> Unit, onFoodMove: (Offset) -> Unit, onFoodDrop: () -> Unit, onFoodTap: (Food) -> Unit,
+    onFoodStart: (Food, Offset) -> Unit, onFoodMove: (Offset) -> Unit, onFoodDrop: () -> Unit, onFoodTap: (Food) -> Unit, onEatBerry: (Berry) -> Unit,
 ) {
     if (mode != Mode.FEED && mode != Mode.CLEAN && mode != Mode.SLEEP) return
     val shape = RoundedCornerShape(18.dp)
@@ -741,7 +742,8 @@ private fun CareTray(
             ) { content() }
         }
         when (mode) {
-            Mode.FEED -> Food.entries.filter { it != Food.GARDEN || s.berryStock > 0 }.forEach { f ->
+            Mode.FEED -> {
+                Food.entries.filter { it != Food.GARDEN || s.berryStock > 0 }.forEach { f ->
                 var itemPos by remember { mutableStateOf(Offset.Zero) }
                 val badge = when (f) {
                     Food.GARDEN -> "×${s.berryStock}"
@@ -765,8 +767,20 @@ private fun CareTray(
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(f.emoji, fontSize = 24.sp, modifier = Modifier.alpha(if (dragging == f) 0.3f else 1f))
+                    if (f == Food.GARDEN) BerryIcon(Berry.BLUE, 28.dp, Modifier.alpha(if (dragging == f) 0.3f else 1f))
+                    else Text(f.emoji, fontSize = 24.sp, modifier = Modifier.alpha(if (dragging == f) 0.3f else 1f))
                     if (badge.isNotEmpty()) Text(badge, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd))
+                }
+            }
+                // Vorrat aus dem Garten (nur Sorten, die du hast): antippen = naschen
+                // Blaubeeren sind schon als „Gartenbeeren“ oben (ziehen oder antippen)
+                Berry.entries.filter { it != Berry.BLUE && GardenEngine.count(s, it) > 0 }.forEach { b ->
+                    slot("${b.label} naschen", false, { onEatBerry(b) }) {
+                        Box(contentAlignment = Alignment.Center) {
+                            BerryIcon(b, 28.dp)
+                            Text("${GardenEngine.count(s, b)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.BottomEnd))
+                        }
+                    }
                 }
             }
             Mode.CLEAN -> {

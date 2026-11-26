@@ -30,6 +30,8 @@ class BodyMap(
     tail: BodyPoint? = null,
     /** null = automatisch (Schwanzfläche gefunden?), true/false = vom Spieler festgelegt. */
     hasTail: Boolean? = null,
+    /** Breite von Kopf und Rumpf (Bildanteil); null = aus der Kopfbreite. Runde 4: eigener Regler „Körperbreite“. */
+    bodyWidth: Float? = null,
 ) {
     init { require(mask.size == cols * rows && cols > 0 && rows > 0) }
 
@@ -51,10 +53,11 @@ class BodyMap(
     // außerhalb liegt, ist Schwanz (alle Schwänze zählen, z. B. 9 bei einem Neunschweif).
     private val headCx = headX
     private val headCy = (headTop + this.mouth.y) / 2f
-    private val headR = max(headWidth * 0.62f, (this.mouth.y - headTop) * 0.75f)
+    private val coreW = bodyWidth ?: (headWidth * 1.24f)
+    private val headR = max(coreW / 2f, (this.mouth.y - headTop) * 0.75f)
     private val bodyCx = headX
     private val bodyCy = (this.mouth.y + bottom) / 2f
-    private val bodyRx = max(headWidth * 0.62f, 0.08f)
+    private val bodyRx = max(coreW / 2f, 0.08f)
     private val bodyRy = max((bottom - this.mouth.y) / 2f * 1.15f, 0.06f)
 
     private fun inCore(x: Float, y: Float): Boolean {
@@ -72,10 +75,16 @@ class BodyMap(
     /** Wurde automatisch eine Schwanzfläche gefunden (für die Rückfrage beim Import)? */
     val tailAreaFound: Boolean get() = tailCells.size >= max(4, cols * rows / 200)
 
-    val tail: BodyPoint = tail ?: if (tailCells.isNotEmpty()) BodyPoint(
-        tailCells.map { (it % cols + 0.5f) / cols }.average().toFloat(),
-        tailCells.map { (it / cols + 0.5f) / rows }.average().toFloat(),
-    ) else autoTail(headX)
+    /** Schwanzpunkt: das Schwanzpixel, das dem Mittelwert der Schwanzfläche am nächsten liegt (liegt also immer auf einem Schwanz). */
+    val tail: BodyPoint = tail ?: if (tailCells.isNotEmpty()) {
+        val mx = tailCells.map { (it % cols + 0.5f) / cols }.average().toFloat()
+        val my = tailCells.map { (it / cols + 0.5f) / rows }.average().toFloat()
+        tailCells.map { BodyPoint((it % cols + 0.5f) / cols, (it / cols + 0.5f) / rows) }.minBy { hypot(it.x - mx, it.y - my) }
+    } else autoTail(headX)
+
+    /** Gehört die Rasterzelle zur Schwanzfläche? (für die farbige Anzeige im Sammelbuch) */
+    fun isTailCell(i: Int): Boolean = hasTail && i in tailCellSet
+    private val tailCellSet: Set<Int> = tailCells.toSet()
 
     /** Stellen, die es bei dieser Figur gibt. */
     val zones: List<Zone> = if (this.hasTail) Zone.entries else Zone.entries - Zone.TAIL

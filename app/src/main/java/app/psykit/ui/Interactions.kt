@@ -48,7 +48,7 @@ class SceneBody(val rect: androidx.compose.ui.geometry.Rect, val map: BodyMap) {
     companion object {
         fun of(fp: Footprint?, head: HeadPoint, sceneW: Float, sceneH: Float, density: Float, floating: Boolean, hasTail: Boolean? = null): SceneBody? {
             if (fp == null || fp.w <= 0 || fp.h <= 0 || fp.mask.isEmpty() || sceneW <= 0f || sceneH <= 0f) return null
-            val map = BodyMap(fp.maskCols, fp.maskRows, fp.mask, head.x, head.y, head.size, head.eyes, head.mouth, head.tail, hasTail)
+            val map = BodyMap(fp.maskCols, fp.maskRows, fp.mask, head.x, head.y, head.size, head.eyes, head.mouth, head.tail, hasTail, head.bodyWidth)
             return SceneBody(figureRect(sceneW, sceneH, density, fp, floating), map)
         }
     }

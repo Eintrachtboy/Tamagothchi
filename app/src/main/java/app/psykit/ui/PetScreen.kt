@@ -366,7 +366,10 @@ fun PetScreen(vm: PetViewModel) {
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            CompactHeader(s, onPets = { showPets = true }, onInfo = { showStats = true }, onSettings = { showSettings = true })
+            CompactHeader(
+                s, onPets = { showPets = true }, onInfo = { showStats = true }, onSettings = { showSettings = true },
+                onShop = { mode = Mode.SHOP }, onQuests = { mode = Mode.QUESTS },
+            )
 
             if (careMode) {
                 PetScene(
@@ -387,6 +390,15 @@ fun PetScreen(vm: PetViewModel) {
                     overlay = {
                         // Zustandsringe am oberen Bildrand (Runde 3)
                         if (!isEgg) Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) { MiniStats(s) }
+                        // Runde 4: Höhle (Dungeon) und Wegweiser (Garten) im linken freien Rand der Szene
+                        if (!isEgg) Column(
+                            Modifier.align(Alignment.CenterStart).padding(start = 4.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            SceneDoor("🕳️", "⚔️", "Dungeon") { showDungeon = true }
+                            SceneDoor("🪧", "🌱", "Garten") { mode = Mode.GARDEN }
+                        }
                         // Seitliche Leiste rechts im freien Rand neben der Figur (Runde 3)
                         if (!isEgg) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp, top = 52.dp)) {
                             CareTray(
@@ -583,6 +595,21 @@ private fun androidx.compose.foundation.layout.BoxScope.HandEmoji(emoji: String,
     )
 }
 
+/** Antippbarer Eingang in der Szene (Höhle zum Dungeon, Wegweiser zum Garten). */
+@Composable
+private fun SceneDoor(base: String, badge: String, label: String, onClick: () -> Unit) {
+    Column(
+        Modifier.width(54.dp).clickable(onClickLabel = label, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(base, fontSize = 34.sp)
+            Text(badge, fontSize = 16.sp, modifier = Modifier.align(Alignment.Center))
+        }
+        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF3D2E6B), maxLines = 1)
+    }
+}
+
 /** Befund 15: zeigt, wo der Mund ist; beim Ziehen deutlicher. */
 @Composable
 private fun androidx.compose.foundation.layout.BoxScope.MouthMarker(p: Offset, active: Boolean) {
@@ -659,11 +686,12 @@ private fun androidx.compose.foundation.layout.BoxScope.Blanket(progress: Float)
 private fun ModeBar(mode: Mode, onSelect: (Mode) -> Unit) {
     // Eine feste Zeile am unteren Rand; bei wenig Breite seitlich verschiebbar (kein vertikales Scrollen)
     Column {
-        listOf(Mode.entries).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+        // Runde 4: unten nur die fünf Pflege-Knöpfe; Garten/Dungeon in der Szene, Laden/Aufgaben oben
+        listOf(listOf(Mode.FEED, Mode.STROKE, Mode.CLEAN, Mode.SLEEP, Mode.PLAY)).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { m ->
                     val sel = m == mode
-                    val mod = Modifier.width(66.dp).height(54.dp)
+                    val mod = Modifier.weight(1f).height(54.dp)
                     val content: @Composable () -> Unit = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(m.icon, style = MaterialTheme.typography.titleMedium)
@@ -779,7 +807,7 @@ private fun MessageText(text: String) {
  * Darunter kleine Zustandsringe.
  */
 @Composable
-private fun CompactHeader(s: PetState, onPets: () -> Unit, onInfo: () -> Unit, onSettings: () -> Unit) {
+private fun CompactHeader(s: PetState, onPets: () -> Unit, onInfo: () -> Unit, onSettings: () -> Unit, onShop: () -> Unit, onQuests: () -> Unit) {
     var open by rememberSaveable { mutableStateOf(false) }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -800,6 +828,10 @@ private fun CompactHeader(s: PetState, onPets: () -> Unit, onInfo: () -> Unit, o
                     if (open) Text("${s.stage.displayName} · ${s.exp} / $need EP · ${ageText(s)}", style = MaterialTheme.typography.labelSmall)
                 }
             }
+            if (s.stage != Stage.EGG) {
+                IconButton(onClick = onQuests) { Text("📋", fontSize = 20.sp) }
+                IconButton(onClick = onShop) { Text("🛍️", fontSize = 20.sp) }
+            }
             IconButton(onClick = onPets) { Text("🐾", fontSize = 20.sp) }
             // Werte und Einstellungen in einem Menü (Runde 3)
             var menu by remember { mutableStateOf(false) }
@@ -817,16 +849,32 @@ private fun CompactHeader(s: PetState, onPets: () -> Unit, onInfo: () -> Unit, o
 /** Sechs kleine Zustandsringe in einer Zeile. */
 @Composable
 private fun MiniStats(s: PetState) {
+    // Runde 4: Antippen zeigt Name, Wert und was hilft
+    data class Stat(val icon: String, val label: String, val value: Float, val tip: String)
     val stats = listOf(
-        "🍙" to s.satiety, "💖" to s.happiness, "🫧" to s.hygiene,
-        "⚡" to s.energy, "➕" to s.health, "🤝" to s.trust,
+        Stat("🍙", "Sattheit", s.satiety, "Füttern hilft."),
+        Stat("💖", "Laune", s.happiness, "Streicheln, Kraulen und Spielen helfen."),
+        Stat("🫧", "Hygiene", s.hygiene, "Putzen hilft: Schwamm, Dusche, Schaufel."),
+        Stat("⚡", "Energie", s.energy, "Schlafen hilft. Spiele und Dungeon kosten Energie."),
+        Stat("➕", "Gesundheit", s.health, "Gute Pflege über längere Zeit heilt."),
+        Stat("🤝", "Vertrauen", s.trust, "Liebevolle Pflege erhöht es, Nerven senkt es."),
     )
+    var shown by remember { mutableStateOf<Stat?>(null) }
+    shown?.let { st ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { shown = null },
+            title = { Text("${st.icon} ${st.label}") },
+            text = { Text("${st.value.coerceIn(0f, 100f).toInt()} von 100\n${st.tip}") },
+            confirmButton = { TextButton(onClick = { shown = null }) { Text("OK") } },
+        )
+    }
     Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-        stats.forEach { (icon, value) ->
+        stats.forEach { stat ->
+            val icon = stat.icon; val value = stat.value
             val v = value.coerceIn(0f, 100f)
             val color = when { v < 25f -> Color(0xFFE5484D); v < 50f -> Color(0xFFF5A524); else -> Color(0xFF46A758) }
             val track = MaterialTheme.colorScheme.surfaceVariant
-            Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(36.dp).clickable(onClickLabel = stat.label) { shown = stat }, contentAlignment = Alignment.Center) {
                 Canvas(Modifier.fillMaxSize()) {
                     val sw = 3.5.dp.toPx()
                     val inset = sw / 2

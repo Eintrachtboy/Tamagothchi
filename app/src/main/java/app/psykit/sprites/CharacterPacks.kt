@@ -19,11 +19,11 @@ data class PackManifest(
         .apply { if (floating != null) put("float", floating) }
         .apply {
             val h = head?.split(',')?.mapNotNull { it.toFloatOrNull() }
-            if (h != null && (h.size == 4 || h.size == 8)) put("head", JSONObject().put("x", h[0].toDouble()).put("y", h[1].toDouble()).put("size", h[2].toDouble()).put("eyes", h[3].toDouble())
+            if (h != null && (h.size == 4 || h.size == 8 || h.size == 9)) put("head", JSONObject().put("x", h[0].toDouble()).put("y", h[1].toDouble()).put("size", h[2].toDouble()).put("eyes", h[3].toDouble())
                 .apply {
                     // Befund 06: optionale Mund- und Schwanzpunkte (fehlen = automatisch)
-                    if (h.size == 8 && h[4] >= 0f) put("mouth", JSONObject().put("x", h[4].toDouble()).put("y", h[5].toDouble()))
-                    if (h.size == 8 && h[6] >= 0f) put("tail", JSONObject().put("x", h[6].toDouble()).put("y", h[7].toDouble()))
+                    if (h.size >= 8 && h[4] >= 0f) put("mouth", JSONObject().put("x", h[4].toDouble()).put("y", h[5].toDouble()))
+                    if (h.size >= 8 && h[6] >= 0f) put("tail", JSONObject().put("x", h[6].toDouble()).put("y", h[7].toDouble()))
                 })
         }
         .toString(2)

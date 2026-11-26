@@ -30,13 +30,16 @@ data class HeadPoint(
     val x: Float = 0.5f, val y: Float = 0.1f, val size: Float = 0.42f, val eyes: Float = 0.3f,
     val mouthX: Float? = null, val mouthY: Float? = null,
     val tailX: Float? = null, val tailY: Float? = null,
+    /** Breite von Kopf und Rumpf; außerhalb zählt alles Sichtbare als Schwanz (Runde 4). null = automatisch. */
+    val bodyWidth: Float? = null,
 ) {
     /** Altes Format mit 4 Werten bleibt lesbar; Mund und Schwanz hängen hinten an (-1 = automatisch). */
     fun encode(): String {
         val base = "$x,$y,$size,$eyes"
-        if (mouthX == null && tailX == null) return base
+        if (mouthX == null && tailX == null && bodyWidth == null) return base
         fun v(f: Float?) = f ?: -1f
-        return "$base,${v(mouthX)},${v(mouthY)},${v(tailX)},${v(tailY)}"
+        val eight = "$base,${v(mouthX)},${v(mouthY)},${v(tailX)},${v(tailY)}"
+        return if (bodyWidth == null) eight else "$eight,$bodyWidth"
     }
 
     val mouth: app.psykit.core.model.BodyPoint? get() = if (mouthX != null && mouthY != null) app.psykit.core.model.BodyPoint(mouthX, mouthY) else null
@@ -45,9 +48,9 @@ data class HeadPoint(
     companion object {
         fun decode(s: String?): HeadPoint? {
             val v = s?.split(',')?.mapNotNull { it.toFloatOrNull() } ?: return null
-            if (v.size != 4 && v.size != 8) return null
+            if (v.size != 4 && v.size != 8 && v.size != 9) return null
             fun opt(i: Int) = v.getOrNull(i)?.takeIf { it >= 0f }
-            return HeadPoint(v[0], v[1], v[2], v[3], opt(4), opt(5), opt(6), opt(7))
+            return HeadPoint(v[0], v[1], v[2], v[3], opt(4), opt(5), opt(6), opt(7), opt(8))
         }
     }
 }

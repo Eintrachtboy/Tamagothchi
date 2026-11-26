@@ -407,6 +407,8 @@ private fun FitTab(vm: PetViewModel, h: HeadPoint, custom: Boolean, stage: app.p
         slider("Schwanz Höhe", h.tailY ?: 0.75f, 0f..1f) { vm.setHeadPointFor(stage, h.copy(tailY = it)) }
         TextButton(onClick = { vm.setHeadPointFor(stage, h.copy(tailX = null, tailY = null)) }) { Text("Schwanz automatisch") }
     }
+    // Runde 4: Wo hört der Körper auf? Alles Sichtbare außerhalb zählt als Schwanz (grün in der Vorschau)
+    slider("Körperbreite (grün = Schwanz)", h.bodyWidth ?: (h.size * 1.24f).coerceIn(0.1f, 1f), 0.1f..1f) { vm.setHeadPointFor(stage, h.copy(bodyWidth = it)) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("Hat einen Schwanz", modifier = Modifier.weight(1f))
         androidx.compose.material3.Switch(checked = hasTail, onCheckedChange = { vm.setHasTail(it) }, enabled = custom)
@@ -420,6 +422,14 @@ private fun FitTab(vm: PetViewModel, h: HeadPoint, custom: Boolean, stage: app.p
 fun androidx.compose.foundation.layout.BoxScope.BodyMarkers(b: SceneBody) {
     androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
         val r = 10.dp.toPx()
+        // Schwanzfläche farbig (Runde 4), statt nur eines Punkts
+        val m = b.map
+        val cw = b.rect.width / m.cols; val ch = b.rect.height / m.rows
+        for (i in 0 until m.cols * m.rows) if (m.isTailCell(i)) drawRect(
+            androidx.compose.ui.graphics.Color(0x663FA66B),
+            topLeft = androidx.compose.ui.geometry.Offset(b.rect.left + (i % m.cols) * cw, b.rect.top + (i / m.cols) * ch),
+            size = androidx.compose.ui.geometry.Size(cw, ch),
+        )
         drawCircle(androidx.compose.ui.graphics.Color(0xFFE0569A), r, b.mouth, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
         drawCircle(androidx.compose.ui.graphics.Color(0xFF3FA66B), r, b.tail, style = androidx.compose.ui.graphics.drawscope.Stroke(3.dp.toPx()))
         drawRect(androidx.compose.ui.graphics.Color(0x553F6FD8), topLeft = b.rect.topLeft, size = b.rect.size, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))

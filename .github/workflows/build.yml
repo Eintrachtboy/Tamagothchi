@@ -40,6 +40,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # K7: keine zweite Release für denselben Commit, und der Commit-Titel steht im Release-Text
+          git fetch --tags --quiet origin || true
+          if git tag --points-at "$GITHUB_SHA" | grep -q '^v'; then
+            echo "Für diesen Commit gibt es schon eine Release: $(git tag --points-at "$GITHUB_SHA" | tr '\n' ' ')"
+            exit 0
+          fi
+          TITLE="$(git log -1 --format=%s "$GITHUB_SHA")"
+          printf '%s\n\nAPK herunterladen und auf dem Handy öffnen. Neue Versionen lassen sich einfach über die alte installieren, der Spielstand bleibt erhalten.\n' "$TITLE" > notes.txt
           gh release create "v${{ github.run_number }}" "Psykit-v${{ github.run_number }}.apk" \
+            --target "$GITHUB_SHA" \
             --title "Psykit Version ${{ github.run_number }}" \
-            --notes "APK herunterladen und auf dem Handy öffnen. Neue Versionen lassen sich einfach über die alte installieren, der Spielstand bleibt erhalten."
+            --notes-file notes.txt

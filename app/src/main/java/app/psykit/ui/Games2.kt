@@ -1,5 +1,6 @@
 package app.psykit.ui
 
+import android.os.SystemClock
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -71,7 +72,7 @@ fun ReactionGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) 
         state = "wait"
         delay(700L + Random.nextLong(2300))
         if (tappedThisRound) return@LaunchedEffect
-        shownAt = System.currentTimeMillis()
+        shownAt = SystemClock.elapsedRealtime()
         state = if (events[index]) "glow" else "trap"
         delay(if (events[index]) (600 - index * 15).coerceAtLeast(380).toLong() else 1100L)
         if (!tappedThisRound) {
@@ -86,7 +87,7 @@ fun ReactionGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) 
         if (tappedThisRound || index >= total) return
         when (state) {
             "glow" -> {
-                val ms = System.currentTimeMillis() - shownAt
+                val ms = SystemClock.elapsedRealtime() - shownAt
                 tappedThisRound = true; score++
                 if (best == 0L || ms < best) best = ms
                 feedback = "Treffer! $ms ms ⚡"

@@ -191,6 +191,8 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
                     }
                 }
                 HorizontalDivider()
+                BackupsSection(vm)
+                HorizontalDivider()
                 if (!confirmReset) {
                     OutlinedButton(onClick = { confirmReset = true }) { Text("Neu anfangen …") }
                 } else {

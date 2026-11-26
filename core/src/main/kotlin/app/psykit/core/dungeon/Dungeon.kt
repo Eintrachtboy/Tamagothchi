@@ -138,6 +138,10 @@ data class RunReport(
 
 /** Dungeon-Logik: Zustand rein, Zustand raus. */
 object DungeonEngine {
+    /** Befund 14: Rastheilung als Anteil der maximalen KP; Texte nutzen [REST_HEAL_PERCENT]. */
+    const val REST_HEAL = 0.3
+    val REST_HEAL_PERCENT: Int get() = (REST_HEAL * 100).roundToInt()
+
     const val KEY_STEPS = 3000L
     const val MAX_KEYS = 3
     const val KEY_PRICE = 100
@@ -506,8 +510,8 @@ object DungeonEngine {
     fun rest(p: PetState, heal: Boolean): ActionResult {
         val run = p.run ?: return ActionResult(p, "", false)
         if (run.room != RoomType.REST) return ActionResult(p, "", false)
-        val r = if (heal) run.copy(hp = min(run.maxHp, run.hp + (run.maxHp * 0.3).roundToInt())) else run
-        val note = if (heal) "Am Feuer erholt sich ${p.name}: +30 % KP." else "${p.name} hat die Attacken neu sortiert."
+        val r = if (heal) run.copy(hp = min(run.maxHp, run.hp + (run.maxHp * REST_HEAL).roundToInt())) else run
+        val note = if (heal) "Am Feuer erholt sich ${p.name}: +$REST_HEAL_PERCENT % KP." else "${p.name} hat die Attacken neu sortiert."
         return ActionResult(p.copy(run = completeRoom(r.copy(note = note))), note)
     }
 

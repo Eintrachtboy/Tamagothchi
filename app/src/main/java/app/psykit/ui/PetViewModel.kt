@@ -81,10 +81,11 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     fun greet() { _message.value = PetEngine.greeting(state.value, System.currentTimeMillis(), repo.zone) }
 
-    fun feed(food: Food) = act { s, now -> PetEngine.track(PetEngine.feed(s, food, now), Quest.FEED) }
+    fun feed(food: Food) = act { s, now -> PetEngine.track(PetEngine.feed(s, food, now), Quest.FEED).let { it.copy(state = it.state.copy(mouthSeen = true)) } }
     fun stroke(speedDp: Float) = act { s, now -> PetEngine.track(PetEngine.stroke(s, speedDp, now), Quest.STROKE) }
-    fun scratch(zone: Zone) = act { s, now ->
-        val r = PetEngine.scratch(s, zone, now, repo.zone)
+    /** [hint]: Richtungstipp aus den echten Zonen eines eigenen Bildes (K3); null = eingebaute Figur. */
+    fun scratch(zone: Zone, hint: ((Zone, Zone) -> String)? = null, zones: List<Zone> = Zone.entries) = act { s, now ->
+        val r = if (hint != null) PetEngine.scratch(s, zone, now, repo.zone, hint, zones) else PetEngine.scratch(s, zone, now, repo.zone, zones = zones)
         if (r.reaction == Reaction.JUMP) PetEngine.track(r, Quest.SCRATCH) else r
     }
     fun clean(fraction: Float) = act { s, _ -> PetEngine.track(PetEngine.clean(s, fraction), Quest.CLEAN) }
@@ -126,8 +127,24 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Gibt null zurück, wenn gespielt werden darf, sonst den Grund. */
     fun checkPlay(): String? = PetEngine.canPlay(state.value)?.message?.also { _message.value = it }
-    fun finishGame(kind: GameKind, score: Int, max: Int, bonusExp: Int = 0) =
-        act { s, _ -> PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp), Quest.PLAY) }
+    fun finishGame(kind: GameKind, score: Int, max: Int, bonusExp: Int = 0) {
+        val visit = pendingVisit.takeIf { kind == GameKind.VISIT }
+        pendingVisit = null
+        if (visit == null) {
+            act { s, _ -> PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp), Quest.PLAY) }
+            return
+        }
+        // Befund 08: beide Gutschriften gemeinsam und genau einmal
+        val r = repo.updateWithPartner(visit.first, { PetEngine.visited(it, visit.second) }) { s, _ ->
+            PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp), Quest.PLAY).let { it.state to it }
+        }
+        _message.value = r.message
+        if (r.reaction != Reaction.NONE) _reaction.value = ReactionEvent(_reaction.value.id + 1, r.reaction)
+    }
+    /** Lernstand pro Tierchen: Startseite dieses Spiels gesehen (Befund 34). */
+    fun markIntroSeen(kind: GameKind) = repo.update { s, _ ->
+        (if (kind.name in s.gamesIntroSeen) s else s.copy(gamesIntroSeen = s.gamesIntroSeen + kind.name)) to Unit
+    }
     fun todaysGame(): GameKind = GameKind.dailyOn(PetEngine.epochDay(System.currentTimeMillis(), repo.zone))
 
     fun rename(name: String) = repo.update { s, _ -> PetEngine.rename(s, name) to Unit }
@@ -147,6 +164,8 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { packs.activate(info.id) }
                 _floating.value = packs.floating
                 _headPoint.value = HeadPoint.decode(packs.headPoint) ?: HeadPoint()
+                // Neues Paket: Punkte je Stufe und „hat Schwanz“ neu bestimmen (Rückfrage, falls keine Schwanzfläche gefunden wird)
+                packs.clearStageHeads(); setHasTail(null)
                 if (info.petName.isNotBlank()) rename(info.petName)
                 _spriteVersion.value++
                 "Paket „${info.name}“ mit ${info.images} Bildern importiert und aktiviert." +
@@ -162,6 +181,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         val info = packs.activate(id)
         _floating.value = packs.floating
         _headPoint.value = HeadPoint.decode(packs.headPoint) ?: HeadPoint()
+        packs.clearStageHeads(); setHasTail(null)
         if (info != null) {
             if (info.petName.isNotBlank()) rename(info.petName)
             _message.value = "Jetzt mit Figur „${info.name}“."
@@ -247,13 +267,25 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     /** Sitz von Hut und Brille auf eigenen Bildern. */
     private val _headPoint = MutableStateFlow(HeadPoint.decode(packs.headPoint) ?: HeadPoint())
     val headPoint: StateFlow<HeadPoint> = _headPoint
-    fun setHeadPoint(h: HeadPoint) { packs.headPoint = h.encode(); _headPoint.value = h }
+    fun setHeadPoint(h: HeadPoint) { packs.headPoint = h.encode(); _headPoint.value = h; _headVersion.value++ }
+
+    // Runde 3: Punkte je Stufe und „hat Schwanz“
+    private val _headVersion = MutableStateFlow(0)
+    val headVersion: StateFlow<Int> = _headVersion
+    fun headFor(stage: Stage): HeadPoint = HeadPoint.decode(packs.headPointFor(stage.name)) ?: _headPoint.value
+    fun setHeadPointFor(stage: Stage, h: HeadPoint) { packs.setHeadPointFor(stage.name, h.encode()); _headVersion.value++ }
+    fun resetHeadPointFor(stage: Stage) { packs.setHeadPointFor(stage.name, null); _headVersion.value++ }
+    private val _hasTail = MutableStateFlow(packs.hasTail)
+    val hasTail: StateFlow<Boolean?> = _hasTail
+    fun setHasTail(v: Boolean?) { packs.hasTail = v; _hasTail.value = v; _headVersion.value++ }
 
     // ---------- Mehrere Tierchen ----------
     val currentPetId: StateFlow<String> = repo.currentId
 
     fun allPets() = repo.allPets()
-    fun visitedBy(partnerId: String, ratio: Float) = repo.updatePet(partnerId) { PetEngine.visited(it, ratio) }
+    /** Besuch vormerken; gebucht wird erst zusammen mit der eigenen Belohnung in [finishGame] (Befund 08). */
+    private var pendingVisit: Pair<String, Float>? = null
+    fun visitedBy(partnerId: String, ratio: Float) { pendingVisit = partnerId to ratio }
     fun spritesFor(id: String) = if (id == sprites.petId) sprites else SpriteStore(getApplication(), id)
 
     private val _floating = MutableStateFlow(packs.floating)
@@ -265,6 +297,8 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         packs = CharacterPacks(getApplication(), sprites)
         _floating.value = packs.floating
         _headPoint.value = HeadPoint.decode(packs.headPoint) ?: HeadPoint()
+        _hasTail.value = packs.hasTail
+        _headVersion.value++
         _spriteVersion.value++
     }
 
@@ -286,6 +320,26 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         if (id != "p1") java.io.File(app.filesDir, "sprites_$id").deleteRecursively()
         else java.io.File(app.filesDir, "sprites").listFiles()?.forEach { it.delete() }
         reloadSprites()
+    }
+
+    // ---------- Spielstandschutz (Befund 21) ----------
+    /** true, solange der Spielstand des aktiven Tierchens nicht gelesen werden kann. */
+    val currentLocked: StateFlow<Boolean> = repo.currentLocked
+    fun brokenPets() = repo.brokenPets()
+    fun backups() = repo.backups()
+    fun currentRaw(): String? = repo.currentRaw()
+
+    fun retryLoad(): Boolean = repo.retry().also { ok ->
+        reloadSprites()
+        _message.value = if (ok) "Der Spielstand ist wieder da." else "Der Spielstand ist noch nicht lesbar. Er bleibt gesichert."
+    }
+
+    /** Neues Ei nach ausdrücklicher Wahl. Die Sicherung des alten Stands bleibt erhalten. */
+    fun startOver(name: String) = reset(name)
+
+    fun restoreBackup(key: String): Boolean = repo.restoreBackup(key).also { ok ->
+        if (ok) { reloadSprites(); _message.value = "Sicherung als neues Tierchen wiederhergestellt: ${state.value.name}." }
+        else _message.value = "Diese Sicherung kann diese Version noch nicht lesen. Sie bleibt erhalten."
     }
 
     override fun onCleared() { stopSteps() }

@@ -51,6 +51,8 @@ object PetEngine {
 
     /** Schritte pro „Spaziergang“, nach dem das Tierchen etwas schmutzig wird. */
     const val STEPS_PER_DIRT = 1500L
+    /** Befund 03: so viele Schritte ergeben 1 EP (Anzeige und Rechnung nutzen denselben Wert). */
+    const val STEPS_PER_EXP = 100L
     const val GARDEN_DAYS = 3
     const val HARVEST_BERRIES = 3
     const val MAX_DIRT = 6
@@ -255,6 +257,10 @@ object PetEngine {
         }
     }
 
+    /** K1 (vorläufige Werte): Kraulen bringt nur mit Abstand und bis zu einer Tagesgrenze Freude. */
+    const val SCRATCH_COOLDOWN_MS = 10_000L
+    const val SCRATCH_REWARDS_PER_DAY = 20
+
     /** Nach so vielen Fehlversuchen verrät das Tierchen die Lieblingsstelle. */
     const val SCRATCH_REVEAL_AFTER = 3
 
@@ -263,12 +269,24 @@ object PetEngine {
         if (s.scratchTriedDay == epochDay(now, tz)) s.scratchTried else emptyList()
 
     /** Kraulen an einer Stelle. Jeden Tag gibt es eine geheime Lieblingsstelle. */
-    fun scratch(s: PetState, zone: Zone, now: Long, tz: ZoneId): ActionResult {
+    fun scratch(
+        s: PetState, zone: Zone, now: Long, tz: ZoneId,
+        /** Richtungstipp; bei eigenen Bildern aus den echten Zonenmitten der BodyMap (K3). */
+        hint: (from: Zone, to: Zone) -> String = { a, b -> a.hintTowards(b) },
+        /** Mögliche Stellen; ohne Schwanz bei Figuren ohne Schwanz. */
+        zones: List<Zone> = Zone.entries,
+    ): ActionResult {
         blocked(s)?.let { return it }
         val today = epochDay(now, tz)
-        val favorite = Zone.favoriteOn(today, s.bornAt)
+        val favorite = Zone.favoriteOn(today, s.bornAt, zones)
+        val rewardsToday = if (s.scratchRewardDay == today) s.scratchRewardsToday else 0
+        val rested = now - s.lastScratchRewardAt >= SCRATCH_COOLDOWN_MS
+        // Freude nur mit Abstand und bis zur Tagesgrenze; der Fund der Lieblingsstelle zählt immer.
+        val mayReward = rested && rewardsToday < SCRATCH_REWARDS_PER_DAY
+        fun rewarded(x: PetState) = x.copy(scratchRewardDay = today, scratchRewardsToday = rewardsToday + 1, lastScratchRewardAt = now)
         if (s.scratchFoundDay == today) {
-            return ActionResult(clamp(s.copy(happiness = s.happiness + 2f)), "${s.name} genießt das Kraulen (${zone.label}).", reaction = Reaction.HAPPY)
+            if (!mayReward) return ActionResult(s, scratchTiredMessage(s, rested), false, Reaction.NONE)
+            return ActionResult(clamp(rewarded(s).copy(happiness = s.happiness + 2f)), "${s.name} genießt das Kraulen (${zone.label}).", reaction = Reaction.HAPPY)
         }
         val tried = (scratchTriedToday(s, now, tz) + zone).distinct()
         val st = s.copy(scratchTriedDay = today, scratchTried = tried)
@@ -277,9 +295,14 @@ object PetEngine {
             return withExp(ns, 5, "Volltreffer! Heute liebt ${s.name} es, an dieser Stelle gekrault zu werden (${zone.label}). Es macht einen Freudensprung!", Reaction.JUMP)
         }
         val misses = tried.count { it != favorite }
-        val hint = if (misses >= SCRATCH_REVEAL_AFTER) "Psst … heute ist es: ${favorite.label}!" else zone.hintTowards(favorite)
-        return ActionResult(clamp(st.copy(happiness = s.happiness + 1f)), "${zone.label}: ganz nett, aber nicht die Lieblingsstelle. $hint", reaction = Reaction.HAPPY)
+        val hint = if (misses >= SCRATCH_REVEAL_AFTER) "Psst … heute ist es: ${favorite.label}!" else hint(zone, favorite)
+        val text = "${zone.label}: ganz nett, aber nicht die Lieblingsstelle. $hint"
+        if (!mayReward) return ActionResult(st, text, reaction = Reaction.NONE)
+        return ActionResult(clamp(rewarded(st).copy(happiness = s.happiness + 1f)), text, reaction = Reaction.HAPPY)
     }
+
+    private fun scratchTiredMessage(s: PetState, rested: Boolean) =
+        if (!rested) "${s.name} braucht kurz eine Pause vom Kraulen." else "${s.name} ist für heute genug gekrault worden."
 
     // ---------------- Putzen ----------------
 
@@ -445,9 +468,9 @@ object PetEngine {
     /** 100 Schritte = 1 EP, je 500 Schritte +5 Laune (max. +25). Rest bleibt offen. */
     fun redeemSteps(s: PetState): ActionResult {
         if (s.stage == Stage.EGG) return ActionResult(s, "Erst muss das Ei schlüpfen. Deine Schritte bleiben gespeichert.", false)
-        val usable = (s.pendingSteps / 100) * 100
-        if (usable == 0L) return ActionResult(s, "Lauf noch ein bisschen! Ab 100 Schritten gibt es EP.", false)
-        val exp = (usable / 100).toInt()
+        val usable = (s.pendingSteps / STEPS_PER_EXP) * STEPS_PER_EXP
+        if (usable == 0L) return ActionResult(s, "Lauf noch ein bisschen! Ab $STEPS_PER_EXP Schritten gibt es EP.", false)
+        val exp = (usable / STEPS_PER_EXP).toInt()
         val mood = min(25f, (usable / 500) * 5f)
         // 10 Sternenstaub pro 1000 Schritte, 1 Schlüssel pro 3000 Schritte (höchstens 3)
         val dust = (usable / 100).toInt()

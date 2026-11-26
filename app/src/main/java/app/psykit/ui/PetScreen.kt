@@ -6,6 +6,12 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import app.psykit.R
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -93,7 +99,7 @@ import kotlin.math.roundToInt
 /** Was man gerade mit dem Tierchen macht. */
 enum class Mode(val icon: String, val label: String) {
     FEED("🍙", "Füttern"), STROKE("🤚", "Streicheln"), CLEAN("🧽", "Putzen"),
-    SLEEP("🌙", "Schlafen"), PLAY("🎲", "Spielen"), BONUS("🫐", "Bonus"),
+    SLEEP("🌙", "Schlafen"), PLAY("🎲", "Spielen"),
     GARDEN("🌱", "Garten"), QUESTS("📋", "Aufgaben"), DUNGEON("⚔️", "Dungeon"), SHOP("🛍️", "Laden"),
 }
 
@@ -105,7 +111,10 @@ fun PetScreen(vm: PetViewModel) {
     val reaction by vm.reaction.collectAsState()
     val floating by vm.floating.collectAsState()
     val spriteVersion by vm.spriteVersion.collectAsState()
-    val headPoint by vm.headPoint.collectAsState()
+    val packHead by vm.headPoint.collectAsState()
+    val headVersion by vm.headVersion.collectAsState()
+    val hasTailSetting by vm.hasTail.collectAsState()
+    val saveLocked by vm.currentLocked.collectAsState()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -126,12 +135,21 @@ fun PetScreen(vm: PetViewModel) {
         stepPermission = vm.stepSensor.hasPermission()
         if (stepPermission) vm.startSteps()
     }
+    fun notificationsGranted() = Build.VERSION.SDK_INT < 33 ||
+        ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    var notifyPermission by remember { mutableStateOf(notificationsGranted()) }
+    val notifyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifyPermission = notificationsGranted() }
+    /** Erster Start: beide Freigaben einmal anfragen. */
     fun requestPermissions() {
         val perms = buildList {
             if (Build.VERSION.SDK_INT >= 29) add(Manifest.permission.ACTIVITY_RECOGNITION)
             if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
         }
         if (perms.isNotEmpty()) permLauncher.launch(perms.toTypedArray())
+    }
+    /** Befund 01: Die Schritt-Schaltfläche fragt nur nach Schritten. */
+    fun requestStepPermission() {
+        if (Build.VERSION.SDK_INT >= 29) permLauncher.launch(arrayOf(Manifest.permission.ACTIVITY_RECOGNITION))
     }
     LaunchedEffect(Unit) {
         vm.greet()
@@ -143,6 +161,17 @@ fun PetScreen(vm: PetViewModel) {
     val sprite = remember(s.stage, variant, spriteVersion) { vm.sprites.load(s.stage, variant) }
     val isEgg = s.stage == Stage.EGG
     val current by rememberUpdatedState(s)
+    // Punkte je Stufe (Runde 3), sonst die des Pakets
+    val headPoint = remember(s.stage, headVersion, packHead) { vm.headFor(s.stage) }
+
+    // Befund 06: Körperzonen aus dem sichtbaren Umriss des eigenen Bildes (null = eingebaute Figur)
+    val density = LocalDensity.current.density
+    // Runde 5: Tipp auf einen Zustandsring zeigt einen Hinweis in der Textzeile, nach 4 s wieder weg
+    var statHint by remember { mutableStateOf("") }
+    LaunchedEffect(statHint) {
+        if (statHint.isNotEmpty()) { kotlinx.coroutines.delay(4000); statHint = "" }
+    }
+    val footprint = rememberFootprint(sprite)
 
     // Geometrie für Drag & Drop (alles in Root-Koordinaten)
     var rootPos by remember { mutableStateOf(Offset.Zero) }
@@ -166,7 +195,6 @@ fun PetScreen(vm: PetViewModel) {
     val shower = tool == 1
     var toolPos by remember { mutableStateOf<Offset?>(null) }
     val spotCount = remember(cleanSession) { PetEngine.dirtSpots(s) }
-    val spots = remember(cleanSession) { dirtSpotPositions(spotCount, s.bornAt + cleanSession * 7919L) }
     val foam = remember(cleanSession) { FloatArray(spotCount) }
     val cleaned = remember(cleanSession) { BooleanArray(spotCount) }
     var cleanTick by remember { mutableIntStateOf(0) }
@@ -177,6 +205,24 @@ fun PetScreen(vm: PetViewModel) {
         cleanDone = true
         if (spotCount > 0) vm.clean(cleaned.count { it }.toFloat() / spotCount)
         else if (current.poops == 0) vm.clean(1f)
+    }
+
+    // Befund 16: passendes Werkzeug vorschlagen und den nächsten Schritt in einem Satz nennen
+    val cleanTickNow = cleanTick
+    val suggestedTool = when {
+        spotCount > 0 && (0 until spotCount).any { !cleaned[it] && foam[it] < 1f } -> 0
+        spotCount > 0 && cleaned.any { !it } -> 1
+        s.poops > 0 -> 2
+        else -> -1
+    }
+    LaunchedEffect(suggestedTool, cleanSession) { if (suggestedTool >= 0) tool = suggestedTool }
+    val cleanNextStep = when {
+        cleanTickNow < 0 -> ""
+        spotCount == 0 && s.poops == 0 -> "${s.name} ist schon sauber."
+        suggestedTool == 0 -> "Schwamm: über die Flecken wischen, bis Schaum entsteht. Noch ${cleaned.count { !it }} von $spotCount."
+        suggestedTool == 1 -> "Dusche: den Schaum abspülen. Noch ${cleaned.count { !it }} von $spotCount."
+        suggestedTool == 2 -> "Schaufel: über die Häufchen wischen (${s.poops})."
+        else -> "Fertig sauber! Tippe auf „Fertig“."
     }
 
     // ---------- Schlafen ----------
@@ -205,6 +251,8 @@ fun PetScreen(vm: PetViewModel) {
             hummed = false
         }
     }
+    // Zurück-Taste führt aus Garten und Unteransichten ins Zuhause
+    androidx.activity.compose.BackHandler(enabled = mode != Mode.STROKE && mode != Mode.FEED && mode != Mode.CLEAN && mode != Mode.SLEEP) { mode = Mode.STROKE }
     LaunchedEffect(mode) {
         handPos = null; toolPos = null; strokeHint = ""
         if (mode == Mode.CLEAN) cleanSession++
@@ -213,20 +261,36 @@ fun PetScreen(vm: PetViewModel) {
 
     fun local(root: Offset) = root - sceneTopLeft
 
+    val body = remember(footprint, headPoint, sceneSize, floating, mode) {
+        if (mode == Mode.GARDEN) null else SceneBody.of(footprint, headPoint, sceneSize.width.toFloat(), sceneSize.height.toFloat(), density, floating, hasTailSetting)
+    }
+    val bodyNow by rememberUpdatedState(body)
+    /** Zone unter dem Finger: bei eigenen Bildern nur auf sichtbaren Pixeln. */
+    fun zoneHere(p: Offset, size: IntSize): Zone? { val b = bodyNow; return if (b != null) b.zoneAt(p) else zoneAt(p, size) }
+    // Schmutzflecken liegen bei eigenen Bildern auf sichtbaren Körperpixeln (Befund 06), Anteile der Szene
+    val spots = remember(cleanSession, body) {
+        val seed = s.bornAt + cleanSession * 7919L
+        val b = body
+        if (b != null && sceneSize.width > 0 && sceneSize.height > 0) b.map.bodyPoints(spotCount, seed).map { p ->
+            val o = b.toScene(p); Offset(o.x / sceneSize.width, o.y / sceneSize.height)
+        } else dirtSpotPositions(spotCount, seed)
+    }
+    fun scratchAt(z: Zone) { val m = bodyNow?.map; vm.scratch(z, m?.let { map -> { a: Zone, t: Zone -> map.hint(a, t) } }, m?.zones ?: Zone.entries) }
+
     val sceneInteraction: Modifier = when (mode) {
         Mode.STROKE -> Modifier
             .pointerInput(Mode.STROKE) {
                 detectTapGestures(
                     onPress = { p ->
                         // Schon beim Auflegen zeigen, welche Stelle unter dem Finger liegt
-                        scratchLabel = zoneAt(p, size)?.label ?: ""
+                        scratchLabel = zoneHere(p, size)?.label ?: ""
                         scratchPos = p
                         tryAwaitRelease()
                         scratchPos = null; scratchLabel = ""
                     },
                     onLongPress = { p ->
-                        val z = zoneAt(p, size)
-                        if (z != null) vm.scratch(z) else vm.say("Halte den Finger direkt auf ${current.name}, um zu kraulen.")
+                        val z = zoneHere(p, size)
+                        if (z != null) scratchAt(z) else vm.say("Halte den Finger direkt auf ${current.name}, um zu kraulen.")
                     },
                 )
             }
@@ -300,170 +364,185 @@ fun PetScreen(vm: PetViewModel) {
     }
 
     Box(Modifier.fillMaxSize().onGloballyPositioned { rootPos = it.positionInRoot() }) {
+        // Befund 35/15/16/17: Zuhause ohne vertikales Scrollen. Die Szene bekommt den Restplatz,
+        // Pflegewerkzeuge liegen direkt darunter, die Aktionsleiste sitzt fest unten.
+        val careMode = isEgg || mode == Mode.FEED || mode == Mode.STROKE || mode == Mode.CLEAN || mode == Mode.SLEEP
         Column(
             Modifier
                 .fillMaxSize()
                 .safeDrawingPadding()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Header(s, onPets = { showPets = true }, onInfo = { showStats = true }, onSettings = { showSettings = true })
-            if (!isEgg) StatRings(s)
-
-            if (mode == Mode.GARDEN && !isEgg) GardenScene(
-                vm, s, sprite, gardenSeed, fertilizeMode,
-                onFertilized = { fertilizeMode = false },
-                modifier = Modifier.onGloballyPositioned {
-                    val b = it.boundsInRoot()
-                    sceneTopLeft = b.topLeft
-                    sceneSize = it.size
-                },
-            ) else PetScene(
-                stage = s.stage, mood = s.mood, sleeping = s.sleeping, poops = s.poops, phase = phase,
-                custom = sprite, customIsVariant = sprite?.exact == true && variant != SpriteVariant.BASE,
-                reaction = reaction,
-                modifier = Modifier.onGloballyPositioned {
-                    val b = it.boundsInRoot()
-                    sceneTopLeft = b.topLeft
-                    sceneSize = it.size
-                },
-                interaction = if (isEgg) Modifier else sceneInteraction,
-                dim = if (mode == Mode.SLEEP) 1f - light else 0f,
-                floating = floating,
-                wear = Wearables.of(s, headPoint),
-                overlay = {
-                    when (mode) {
-                        Mode.STROKE -> if (handPos == null) scratchPos?.let { p ->
-                            HandEmoji("🤏", p)
-                            if (scratchLabel.isNotEmpty()) Text(
-                                "Kraulen: $scratchLabel …", fontWeight = FontWeight.Bold, color = Color(0xFF5B3FA6),
-                                modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
-                            )
-                        } else handPos?.let { p ->
-                            HandEmoji("✋", p)
-                            if (strokeHint.isNotEmpty()) Text(
-                                strokeHint, fontWeight = FontWeight.Bold,
-                                color = if (strokeHint == "zu schnell!") Color(0xFFE5484D) else Color(0xFF5B3FA6),
-                                modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
-                            )
-                        }
-                        Mode.CLEAN -> {
-                            CleanOverlay(spots, foam, cleaned, cleanTick)
-                            toolPos?.let { p -> HandEmoji(when (tool) { 1 -> "🚿"; 2 -> "🧹"; else -> "🧽" }, p) }
-                        }
-                        Mode.SLEEP -> Blanket(blanket)
-                        else -> {}
-                    }
-                },
+            CompactHeader(
+                s, onPets = { showPets = true }, onInfo = { showStats = true }, onSettings = { showSettings = true },
+                onShop = { mode = Mode.SHOP }, onQuests = { mode = Mode.QUESTS },
             )
 
-            Text(
-                message.ifEmpty { statusLine(s) },
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp),
-            )
-
-            if (!isEgg) {
-                ModeBar(mode) { mode = it }
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.padding(14.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        when (mode) {
-                            Mode.FEED -> FoodTray(
-                                s = s,
-                                dragging = dragFood,
-                                onStart = { f, root -> dragFood = f; dragPos = root },
-                                onMove = { dragPos += it },
-                                onDrop = {
+            if (careMode) {
+                PetScene(
+                    stage = s.stage, mood = s.mood, sleeping = s.sleeping, poops = s.poops, phase = phase,
+                    custom = sprite, customIsVariant = sprite?.exact == true && variant != SpriteVariant.BASE,
+                    reaction = reaction,
+                    sceneHeight = null,
+                    modifier = Modifier.weight(1f).onGloballyPositioned {
+                        val b = it.boundsInRoot()
+                        sceneTopLeft = b.topLeft
+                        sceneSize = it.size
+                    },
+                    interaction = if (isEgg) Modifier else sceneInteraction,
+                    dim = if (mode == Mode.SLEEP) 1f - light else 0f,
+                    floating = floating,
+                    wear = Wearables.of(s, headPoint),
+                    footprintIn = footprint,
+                    overlay = {
+                        // Zustandsringe am oberen Bildrand (Runde 3)
+                        if (!isEgg) Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) { MiniStats(s) { statHint = it } }
+                        // Runde 4: Höhle (Dungeon) und Wegweiser (Garten) im linken freien Rand der Szene
+                        // Runde 6: Wegweiser weiter oben im Hintergrund, Höhle unten links
+                        if (!isEgg) Box(Modifier.align(Alignment.TopStart).padding(start = 6.dp, top = 120.dp)) {
+                            GardenSign(onClick = { mode = Mode.GARDEN })
+                        }
+                        if (!isEgg) Box(Modifier.align(Alignment.BottomStart).padding(start = 6.dp, bottom = 70.dp)) {
+                            CaveDoor(onClick = { showDungeon = true })
+                        }
+                        // Seitliche Leiste rechts im freien Rand neben der Figur (Runde 3)
+                        if (!isEgg) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp, top = 52.dp)) {
+                            CareTray(
+                                mode = mode, s = s, dragging = dragFood, tool = tool, onTool = { tool = it },
+                                onDone = { finishCleaning(); cleanSession++ },
+                                light = light, onLight = { light = it },
+                                humming = humming, hummed = hummed,
+                                onHum = {
+                                    if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startHumming()
+                                    else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                },
+                                onWake = { vm.wake(); blanket = 0f; light = 1f },
+                                onFoodStart = { f, root -> dragFood = f; dragPos = root },
+                                onFoodMove = { dragPos += it },
+                                onFoodDrop = {
                                     val f = dragFood
                                     dragFood = null
                                     if (f != null) {
-                                        if (mouthHit(local(dragPos), sceneSize)) vm.feed(f)
-                                        else vm.say("Zieh das Essen bis an ${s.name}s Mund.")
+                                        val b = body
+                                        val hit = if (b != null) b.mouthHit(local(dragPos), 56f * density) else mouthHit(local(dragPos), sceneSize)
+                                        if (hit) vm.feed(f)
+                                        else vm.say("Zieh das Essen bis an ${s.name}s Mund oder tipp es einfach an.")
                                     }
                                 },
+                                onFoodTap = { f -> vm.feed(f) },
                             )
-                            Mode.STROKE -> {
-                                Text("Streichle mit dem Finger über ${s.name}. Langsam beruhigt, zu schnell nervt.", style = MaterialTheme.typography.bodyMedium)
-                                Text("Kraulen: Finger einen Moment ruhig auf eine Stelle halten. Eine davon ist heute die geheime Lieblingsstelle.", style = MaterialTheme.typography.bodySmall)
-                                ScratchSpots(s, vm.repo.zone)
-                                StatBar("🤝 Vertrauen", s.trust)
+                        }
+                        when (mode) {
+                            Mode.FEED -> if (!s.mouthSeen) body?.let { MouthMarker(it.mouth, dragFood != null) }
+                            Mode.STROKE -> if (handPos == null) scratchPos?.let { p ->
+                                HandEmoji("🤏", p)
+                                if (scratchLabel.isNotEmpty()) Text(
+                                    "Kraulen: $scratchLabel …", fontWeight = FontWeight.Bold, color = Color(0xFF5B3FA6),
+                                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                                )
+                            } else handPos?.let { p ->
+                                HandEmoji("✋", p)
+                                if (strokeHint.isNotEmpty()) Text(
+                                    strokeHint, fontWeight = FontWeight.Bold,
+                                    color = if (strokeHint == "zu schnell!") Color(0xFFE5484D) else Color(0xFF5B3FA6),
+                                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 12.dp),
+                                )
                             }
                             Mode.CLEAN -> {
-                                Text(
-                                    when {
-                                        spotCount == 0 && s.poops == 0 -> "${s.name} ist schon sauber."
-                                        spotCount == 0 -> "Räum die Häufchen mit der Schaufel weg: einfach drüberwischen."
-                                        else -> "Erst mit dem Schwamm einschäumen, bis Schaum entsteht, dann abduschen. Noch ${cleaned.count { !it }} von $spotCount Flecken." +
-                                            if (s.poops > 0) " Häufchen kommen mit der Schaufel weg." else ""
-                                    },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    FilterChip(selected = tool == 0, onClick = { tool = 0 }, label = { Text("🧽") })
-                                    FilterChip(selected = tool == 1, onClick = { tool = 1 }, label = { Text("🚿") })
-                                    FilterChip(selected = tool == 2, onClick = { tool = 2 }, label = { Text("🧹 Schaufel") })
-                                    Spacer(Modifier.weight(1f))
-                                    OutlinedButton(onClick = { finishCleaning(); cleanSession++ }) { Text("Fertig") }
-                                }
-                                if (s.dirt > 0) Text("👟 Vom Spazierengehen schmutzig: ${s.dirt}", style = MaterialTheme.typography.bodySmall)
+                                CleanOverlay(spots, foam, cleaned, cleanTick)
+                                toolPos?.let { p -> HandEmoji(when (tool) { 1 -> "🚿"; 2 -> "🧹"; else -> "🧽" }, p) }
                             }
-                            Mode.SLEEP -> {
-                                if (s.sleeping) {
-                                    Text("${s.name} schläft. Psst!", style = MaterialTheme.typography.bodyMedium)
-                                    Button(onClick = { vm.wake(); blanket = 0f; light = 1f }) { Text("☀️ Wecken") }
-                                } else {
-                                    Text("Zieh die Decke von unten über ${s.name} und dreh das Licht runter.", style = MaterialTheme.typography.bodyMedium)
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("💡", Modifier.width(32.dp))
-                                        Slider(value = light, onValueChange = { light = it }, modifier = Modifier.weight(1f))
-                                    }
-                                    OutlinedButton(onClick = {
-                                        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startHumming()
-                                        else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                    }, enabled = !humming) {
-                                        Text(if (humming) "🎵 Ich höre zu …" else if (hummed) "🎵 Gesummt ✓" else "🎵 Schlaflied summen (optional)")
-                                    }
-                                }
-                            }
-                            Mode.PLAY -> {
-                                Text("Such dir ein Spiel aus:", fontWeight = FontWeight.Bold)
-                                GameKind.daily.forEach { g ->
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Column(Modifier.weight(1f)) {
-                                            Text(g.label, fontWeight = FontWeight.Bold)
-                                            Text(gameInfo(g) + " Trainiert ${g.trains}.", style = MaterialTheme.typography.bodySmall)
+                            Mode.SLEEP -> Blanket(blanket)
+                            else -> {}
+                        }
+                    },
+                )
+                MessageText(statHint.ifEmpty { message.ifEmpty { statusLine(s) } })
+                // Feste Höhe für alle Pflegemodi: die Szene springt beim Wechsel nicht mehr (Runde 3)
+                if (!isEgg) Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.CenterStart) {
+                    when (mode) {
+                        Mode.FEED -> Text("Futter rechts zum Mund ziehen oder antippen. Zu viel Süßes macht träge.", style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                        Mode.STROKE -> ScratchSpots(s, vm.repo.zone, body?.map?.zones ?: Zone.entries)
+                        Mode.CLEAN -> Text(cleanNextStep, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                        Mode.SLEEP -> Text(
+                            if (s.sleeping) "${s.name} schläft. Psst!" else "Decke von unten hochziehen, rechts das Licht dimmen.",
+                            style = MaterialTheme.typography.bodySmall, maxLines = 2,
+                        )
+                        else -> {}
+                    }
+                }
+            } else if (mode == Mode.GARDEN) {
+                // Garten als eigener Raum: sichtbarer Eingang über „Garten“ unten, Rückweg hier. Kein Wischen auf der Szene.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { mode = Mode.STROKE }) { Text("← Nach Hause") }
+                    Text("🌱 Garten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
+                GardenScene(
+                    vm, s, sprite, gardenSeed, fertilizeMode,
+                    onFertilized = { fertilizeMode = false },
+                    modifier = Modifier.onGloballyPositioned {
+                        val b = it.boundsInRoot()
+                        sceneTopLeft = b.topLeft
+                        sceneSize = it.size
+                    },
+                )
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    MessageText(message.ifEmpty { statusLine(s) })
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.padding(12.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            GardenPanel(s, vm, gardenSeed, { gardenSeed = it }, fertilizeMode, { fertilizeMode = it })
+                        }
+                    }
+                }
+            } else {
+                // Spiele, Aufgaben, Dungeon, Laden, Bonus: eigene Ansicht statt der Szene (Befund 35 erlaubt das)
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MessageText(message.ifEmpty { statusLine(s) })
+                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                        Column(Modifier.padding(14.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            when (mode) {
+                                Mode.PLAY -> {
+                                    Text("Such dir ein Spiel aus:", fontWeight = FontWeight.Bold)
+                                    // Beerenfang ist ein normales Spiel in der Liste (früher eigener Modus „Bonus“)
+                                    GameKind.entries.forEach { g ->
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Column(Modifier.weight(1f)) {
+                                                Text(g.label, fontWeight = FontWeight.Bold)
+                                                Text(gameInfo(g) + " Trainiert ${g.trains}.", style = MaterialTheme.typography.bodySmall)
+                                            }
+                                            Spacer(Modifier.width(8.dp))
+                                            val ok = g != GameKind.VISIT || vm.allPets().count { it.second.stage != Stage.EGG } >= 2
+                                            Button(onClick = { if (vm.checkPlay() == null) game = g }, enabled = ok) { Text("Spielen") }
                                         }
-                                        Spacer(Modifier.width(8.dp))
-                                        val ok = g != GameKind.VISIT || vm.allPets().count { it.second.stage != Stage.EGG } >= 2
-                                        Button(onClick = { if (vm.checkPlay() == null) game = g }, enabled = ok) { Text("Spielen") }
                                     }
                                 }
-                            }
-                            Mode.GARDEN -> GardenPanel(s, vm, gardenSeed, { gardenSeed = it }, fertilizeMode, { fertilizeMode = it })
-                            Mode.QUESTS -> QuestPanel(s, vm)
-                            Mode.DUNGEON -> DungeonPanel(s, onOpen = { showDungeon = true })
-                            Mode.SHOP -> ShopPanel(s, onShop = { showShop = true }, onBook = { showBook = true })
-                            Mode.BONUS -> {
-                                Text("Beerenfang", fontWeight = FontWeight.Bold)
-                                Text(gameInfo(GameKind.BERRIES) + " Trainiert ${GameKind.BERRIES.trains}.", style = MaterialTheme.typography.bodyMedium)
-                                Button(onClick = { if (vm.checkPlay() == null) game = GameKind.BERRIES }) { Text("Starten") }
+                                Mode.QUESTS -> QuestPanel(s, vm)
+                                Mode.DUNGEON -> DungeonPanel(s, onOpen = { showDungeon = true })
+                                Mode.SHOP -> ShopPanel(s, onShop = { showShop = true }, onBook = { showBook = true })
+                                else -> {}
                             }
                         }
+                    }
+                    if (mode == Mode.QUESTS) {
+                        StepsCard(
+                            available = vm.stepSensor.available,
+                            permission = stepPermission,
+                            stepsToday = stepsToday,
+                            pending = s.pendingSteps,
+                            onAllow = { requestStepPermission() },
+                            onRedeem = vm::redeemSteps,
+                        )
+                        // Befund 01: Pflege-Erinnerungen getrennt von den Schritten freigeben
+                        if (!notifyPermission && Build.VERSION.SDK_INT >= 33) OutlinedButton(
+                            onClick = { notifyLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("🔔 Pflege-Erinnerungen erlauben") }
                     }
                 }
             }
 
-            StepsCard(
-                available = vm.stepSensor.available,
-                permission = stepPermission,
-                stepsToday = stepsToday,
-                pending = s.pendingSteps,
-                onAllow = { requestPermissions() },
-                onRedeem = vm::redeemSteps,
-            )
-            Spacer(Modifier.height(8.dp))
+            if (!isEgg) ModeBar(mode) { mode = it }
         }
 
         // Essen, das gerade gezogen wird, schwebt über allem
@@ -489,12 +568,23 @@ fun PetScreen(vm: PetViewModel) {
     if (showDungeon) DungeonDialog(vm, s, sprite, onClose = { showDungeon = false })
     if (showShop) ShopDialog(vm, s, onClose = { showShop = false })
     if (showBook) CollectionDialog(vm, s, sprite, onClose = { showBook = false })
+    // Runde 3: Findet die App bei einem eigenen Bild keine Schwanzfläche, fragt sie einmal nach
+    val askTail = body != null && hasTailSetting == null && !body.map.tailAreaFound && !isEgg
+    if (askTail) androidx.compose.material3.AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Hat ${s.name} einen Schwanz?") },
+        text = { Text("Ich habe im Bild keinen Schwanz gefunden. Ohne Schwanz ist er nie die Lieblingsstelle zum Kraulen. Das lässt sich im Sammelbuch unter „Sitz“ ändern.") },
+        confirmButton = { TextButton(onClick = { vm.setHasTail(true) }) { Text("Ja, hat einen") } },
+        dismissButton = { TextButton(onClick = { vm.setHasTail(false) }) { Text("Nein, keinen") } },
+    )
+    // Spielstand nicht lesbar: Pflege sperren, bis ausdrücklich entschieden wurde (Befund 21)
+    if (saveLocked) RecoveryScreen(vm, onOtherPet = { showPets = true })
 }
 
-private fun gameInfo(k: GameKind) = when (k) {
+internal fun gameInfo(k: GameKind) = when (k) {
     GameKind.HIDE_SEEK -> "Dein Tierchen versteckt sich hinter einer von drei Wolken. Die Wolken mischen sich, du findest es."
     GameKind.MEMORY -> "Dreh Karten um und finde die passenden Psi-Symbole."
-    GameKind.BUBBLES -> "Bring in 30 Sekunden so viele Seifenblasen wie möglich zum Platzen."
+    GameKind.BUBBLES -> "Bring in ${BUBBLES_SECONDS} Sekunden so viele Seifenblasen wie möglich zum Platzen."
     GameKind.BERRIES -> "Kipp dein Handy, damit dein Tierchen die fallenden Beeren fängt. Goldene Beeren geben Extra-EP."
     GameKind.REACTION -> "Tippe so schnell wie möglich, wenn dein Tierchen lila aufleuchtet. Bei rotem Leuchten nicht tippen!"
     GameKind.ECHO -> "Merk dir die Farbfolge und spiel sie nach. Jede Runde wird sie länger."
@@ -510,6 +600,35 @@ private fun androidx.compose.foundation.layout.BoxScope.HandEmoji(emoji: String,
         emoji, fontSize = 36.sp,
         modifier = Modifier.offset { IntOffset((p.x - 22.dp.toPx()).roundToInt(), (p.y - 26.dp.toPx()).roundToInt()) },
     )
+}
+
+/** Runde 6: Wegweiser-Pfeil nach rechts, antippbar, im Hintergrund der Szene. */
+@Composable
+private fun GardenSign(onClick: () -> Unit) {
+    Column(Modifier.width(72.dp).clickable(onClickLabel = "Garten", onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(painter = painterResource(R.drawable.ic_arrow_sign), contentDescription = null, modifier = Modifier.size(width = 60.dp, height = 40.dp))
+        Text("Garten", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF3D2E6B), maxLines = 1)
+    }
+}
+
+/** Runde 6: Höhle als Vektorgrafik, antippbar, zum Dungeon. */
+@Composable
+private fun CaveDoor(onClick: () -> Unit) {
+    Column(Modifier.width(96.dp).clickable(onClickLabel = "Dungeon", onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally) {
+        Image(painter = painterResource(R.drawable.ic_cave), contentDescription = null, modifier = Modifier.size(width = 84.dp, height = 67.dp))
+        Text("Dungeon", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFF3D2E6B), maxLines = 1)
+    }
+}
+
+/** Befund 15: zeigt, wo der Mund ist; beim Ziehen deutlicher. */
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.MouthMarker(p: Offset, active: Boolean) {
+    Canvas(Modifier.fillMaxSize()) {
+        val r = 28.dp.toPx()
+        drawCircle(Color(0xFFFF9BC8).copy(alpha = if (active) 0.45f else 0.18f), r, p)
+        drawCircle(Color(0xFFE0569A).copy(alpha = if (active) 0.9f else 0.45f), r, p, style = Stroke(2.dp.toPx()))
+    }
+    if (active) Text("👄", fontSize = 18.sp, modifier = Modifier.offset { IntOffset((p.x - 11.dp.toPx()).roundToInt(), (p.y - 40.dp.toPx()).roundToInt()) })
 }
 
 @Composable
@@ -575,12 +694,14 @@ private fun androidx.compose.foundation.layout.BoxScope.Blanket(progress: Float)
 
 @Composable
 private fun ModeBar(mode: Mode, onSelect: (Mode) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Mode.entries.chunked(5).forEach { row ->
+    // Eine feste Zeile am unteren Rand; bei wenig Breite seitlich verschiebbar (kein vertikales Scrollen)
+    Column {
+        // Runde 4: unten nur die fünf Pflege-Knöpfe; Garten/Dungeon in der Szene, Laden/Aufgaben oben
+        listOf(listOf(Mode.FEED, Mode.STROKE, Mode.CLEAN, Mode.SLEEP, Mode.PLAY)).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { m ->
                     val sel = m == mode
-                    val mod = Modifier.weight(1f).height(60.dp)
+                    val mod = Modifier.weight(1f).height(54.dp)
                     val content: @Composable () -> Unit = {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(m.icon, style = MaterialTheme.typography.titleMedium)
@@ -596,18 +717,39 @@ private fun ModeBar(mode: Mode, onSelect: (Mode) -> Unit) {
     }
 }
 
+/**
+ * Schmale Leiste am rechten Rand der Szene (Runde 3): Futter, Putzwerkzeuge oder Licht und Summen.
+ * Sie liegt im freien Rand neben der Figur und verdeckt sie nicht; bei vielen Einträgen scrollt nur die Leiste.
+ */
 @Composable
-private fun FoodTray(
-    s: PetState,
-    dragging: Food?,
-    onStart: (Food, Offset) -> Unit,
-    onMove: (Offset) -> Unit,
-    onDrop: () -> Unit,
+private fun CareTray(
+    mode: Mode, s: PetState, dragging: Food?, tool: Int, onTool: (Int) -> Unit, onDone: () -> Unit,
+    light: Float, onLight: (Float) -> Unit, humming: Boolean, hummed: Boolean, onHum: () -> Unit, onWake: () -> Unit,
+    onFoodStart: (Food, Offset) -> Unit, onFoodMove: (Offset) -> Unit, onFoodDrop: () -> Unit, onFoodTap: (Food) -> Unit,
 ) {
-    Text("Zieh ein Essen in ${s.name}s Mund. Manches mag ${s.name} besonders, manches gar nicht. Zu viel Süßes macht träge.", style = MaterialTheme.typography.bodyMedium)
-    Food.entries.filter { it != Food.GARDEN || s.berryStock > 0 }.chunked(4).forEach { row ->
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            row.forEach { f ->
+    if (mode != Mode.FEED && mode != Mode.CLEAN && mode != Mode.SLEEP) return
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        Modifier
+            .width(54.dp)
+            .heightIn(max = 420.dp)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f), shape)
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        @Composable
+        fun slot(label: String, selected: Boolean = false, onClick: () -> Unit, content: @Composable () -> Unit) {
+            Box(
+                Modifier.size(46.dp)
+                    .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(14.dp))
+                    .clickable(onClickLabel = label, onClick = onClick),
+                contentAlignment = Alignment.Center,
+            ) { content() }
+        }
+        when (mode) {
+            Mode.FEED -> Food.entries.filter { it != Food.GARDEN || s.berryStock > 0 }.forEach { f ->
                 var itemPos by remember { mutableStateOf(Offset.Zero) }
                 val badge = when (f) {
                     Food.GARDEN -> "×${s.berryStock}"
@@ -616,33 +758,40 @@ private fun FoodTray(
                     else -> ""
                 }
                 Box(
-                    Modifier
-                        .weight(1f)
-                        .height(68.dp)
-                        .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(16.dp))
-                        .border(if (f.sweet) 2.dp else 0.dp, if (f.sweet) Color(0xFFFF9BC8) else Color.Transparent, RoundedCornerShape(16.dp))
+                    Modifier.size(46.dp)
+                        .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(14.dp))
+                        .border(if (f.sweet) 2.dp else 0.dp, if (f.sweet) Color(0xFFFF9BC8) else Color.Transparent, RoundedCornerShape(14.dp))
                         .onGloballyPositioned { itemPos = it.positionInRoot() }
+                        .pointerInput(f, "tap") { detectTapGestures(onTap = { onFoodTap(f) }) }
                         .pointerInput(f) {
                             detectDragGestures(
-                                onDragStart = { p -> onStart(f, itemPos + p) },
-                                onDrag = { change, amount -> change.consume(); onMove(amount) },
-                                onDragEnd = onDrop,
-                                onDragCancel = onDrop,
+                                onDragStart = { p -> onFoodStart(f, itemPos + p) },
+                                onDrag = { change, amount -> change.consume(); onFoodMove(amount) },
+                                onDragEnd = onFoodDrop,
+                                onDragCancel = onFoodDrop,
                             )
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(f.emoji, fontSize = 28.sp, modifier = Modifier.alpha(if (dragging == f) 0.3f else 1f))
-                        Text(f.label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                    }
-                    if (badge.isNotEmpty()) Text(badge, fontSize = 12.sp, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp))
+                    Text(f.emoji, fontSize = 24.sp, modifier = Modifier.alpha(if (dragging == f) 0.3f else 1f))
+                    if (badge.isNotEmpty()) Text(badge, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd))
                 }
             }
-            repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+            Mode.CLEAN -> {
+                slot("Schwamm", tool == 0, { onTool(0) }) { Text("🧽", fontSize = 22.sp) }
+                slot("Dusche", tool == 1, { onTool(1) }) { Text("🚿", fontSize = 22.sp) }
+                slot("Schaufel", tool == 2, { onTool(2) }) { Text("🧹", fontSize = 22.sp) }
+                slot("Fertig", false, onDone) { Text("✔️", fontSize = 20.sp) }
+            }
+            Mode.SLEEP -> if (s.sleeping) slot("Wecken", false, onWake) { Text("☀️", fontSize = 22.sp) } else {
+                // Licht in Stufen dimmen statt Schieberegler (passt in die schmale Leiste)
+                slot("Licht heller", light >= 0.95f, { onLight((light + 0.3f).coerceAtMost(1f)) }) { Text("💡", fontSize = 20.sp) }
+                slot("Licht dunkler", light <= 0.3f, { onLight((light - 0.3f).coerceAtLeast(0.1f)) }) { Text("🌑", fontSize = 20.sp) }
+                slot("Schlaflied summen", hummed, { if (!humming) onHum() }) { Text(if (humming) "…" else "🎵", fontSize = 20.sp) }
+            }
+            else -> {}
         }
     }
-    if (s.sluggish) Text("🍬 ${s.name} ist gerade träge von den Süßigkeiten.", style = MaterialTheme.typography.bodySmall)
 }
 
 private fun statusLine(s: PetState): String = when (s.stage) {
@@ -656,44 +805,102 @@ private fun ageText(s: PetState): String {
 }
 
 @Composable
-private fun Header(s: PetState, onPets: () -> Unit, onInfo: () -> Unit, onSettings: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(s.name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text(
-                if (s.stage == Stage.EGG) "Ei · ${ageText(s)}" else "${s.stage.displayName} · Level ${s.level} · ${ageText(s)}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-            )
-            if (s.stage != Stage.EGG) {
-                val need = LevelSystem.expForNext(s.level)
-                Spacer(Modifier.height(6.dp))
-                LinearProgressIndicator(
-                    progress = { (s.exp.toFloat() / need).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().height(8.dp),
-                    color = MaterialTheme.colorScheme.secondary,
-                    trackColor = MaterialTheme.colorScheme.secondaryContainer,
-                    strokeCap = StrokeCap.Round,
+private fun MessageText(text: String) {
+    Text(
+        text, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center, maxLines = 2,
+        modifier = Modifier.fillMaxWidth().heightIn(min = 36.dp),
+    )
+}
+
+/**
+ * Befund 17: kompakter Kopf mit Name, Level und EP-Balken; Details (EP-Zahlen, Alter) aufklappbar.
+ * Darunter kleine Zustandsringe.
+ */
+@Composable
+private fun CompactHeader(s: PetState, onPets: () -> Unit, onInfo: () -> Unit, onSettings: () -> Unit, onShop: () -> Unit, onQuests: () -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).clickable { open = !open }) {
+                Text(
+                    s.name + if (s.stage == Stage.EGG) " · Ei" else " · Lv ${s.level}",
+                    style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1,
                 )
-                Text("${s.exp} / $need EP", style = MaterialTheme.typography.labelSmall)
+                if (s.stage != Stage.EGG) {
+                    val need = LevelSystem.expForNext(s.level)
+                    LinearProgressIndicator(
+                        progress = { (s.exp.toFloat() / need).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth(0.6f).height(4.dp),
+                        color = MaterialTheme.colorScheme.secondary,
+                        trackColor = MaterialTheme.colorScheme.secondaryContainer,
+                        strokeCap = StrokeCap.Round,
+                    )
+                    if (open) Text("${s.stage.displayName} · ${s.exp} / $need EP · ${ageText(s)}", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            if (s.stage != Stage.EGG) {
+                IconButton(onClick = onQuests) { Text("📋", fontSize = 20.sp) }
+                IconButton(onClick = onShop) { Text("🛍️", fontSize = 20.sp) }
+            }
+            IconButton(onClick = onPets) { Text("🐾", fontSize = 20.sp) }
+            // Werte und Einstellungen in einem Menü (Runde 3)
+            var menu by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.Settings, contentDescription = "Menü") }
+                androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("📊 Werte") }, onClick = { menu = false; onInfo() })
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("⚙️ Einstellungen") }, onClick = { menu = false; onSettings() })
+                }
             }
         }
-        IconButton(onClick = onPets) { Text("🐾", fontSize = 22.sp) }
-        IconButton(onClick = onInfo) { Icon(Icons.Filled.Info, contentDescription = "Werte") }
-        IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, contentDescription = "Einstellungen") }
+    }
+}
+
+/** Sechs kleine Zustandsringe in einer Zeile. */
+@Composable
+private fun MiniStats(s: PetState, onTip: (String) -> Unit) {
+    // Runde 4: Antippen zeigt Name, Wert und was hilft
+    data class Stat(val icon: String, val label: String, val value: Float, val tip: String)
+    val stats = listOf(
+        Stat("🍙", "Sattheit", s.satiety, "Füttern hilft."),
+        Stat("💖", "Laune", s.happiness, "Streicheln, Kraulen und Spielen helfen."),
+        Stat("🫧", "Hygiene", s.hygiene, "Putzen hilft: Schwamm, Dusche, Schaufel."),
+        Stat("⚡", "Energie", s.energy, "Schlafen hilft. Spiele und Dungeon kosten Energie."),
+        Stat("➕", "Gesundheit", s.health, "Gute Pflege über längere Zeit heilt."),
+        Stat("🤝", "Vertrauen", s.trust, "Liebevolle Pflege erhöht es, Nerven senkt es."),
+    )
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+        stats.forEach { stat ->
+            val icon = stat.icon; val value = stat.value
+            val v = value.coerceIn(0f, 100f)
+            val color = when { v < 25f -> Color(0xFFE5484D); v < 50f -> Color(0xFFF5A524); else -> Color(0xFF46A758) }
+            val track = MaterialTheme.colorScheme.surfaceVariant
+            Box(Modifier.size(36.dp).clickable(onClickLabel = stat.label) {
+                onTip("${stat.icon} ${stat.label} ${stat.value.coerceIn(0f, 100f).toInt()} von 100 · ${stat.tip}")
+            }, contentAlignment = Alignment.Center) {
+                Canvas(Modifier.fillMaxSize()) {
+                    val sw = 3.5.dp.toPx()
+                    val inset = sw / 2
+                    val arcSize = androidx.compose.ui.geometry.Size(size.width - sw, size.height - sw)
+                    drawArc(track, 0f, 360f, false, topLeft = Offset(inset, inset), size = arcSize, style = Stroke(sw))
+                    drawArc(color, -90f, 360f * v / 100f, false, topLeft = Offset(inset, inset), size = arcSize, style = Stroke(sw, cap = StrokeCap.Round))
+                }
+                Text(icon, fontSize = 14.sp)
+            }
+        }
     }
 }
 
 /** Die sechs Kraulstellen: heute schon probierte sind durchgestrichen, die gefundene hat einen Stern. */
 @Composable
-fun ScratchSpots(s: PetState, zone: java.time.ZoneId) {
+fun ScratchSpots(s: PetState, zone: java.time.ZoneId, zones: List<Zone> = Zone.entries) {
     val now = System.currentTimeMillis()
     val today = PetEngine.epochDay(now, zone)
     val found = s.scratchFoundDay == today
     val tried = PetEngine.scratchTriedToday(s, now, zone)
-    val spots = Zone.entries.joinToString("  ·  ") { z ->
+    val spots = zones.joinToString("  ·  ") { z ->
         when {
-            found && z == Zone.favoriteOn(today, s.bornAt) -> "⭐ ${z.label}"
+            found && z == Zone.favoriteOn(today, s.bornAt, zones) -> "⭐ ${z.label}"
             z in tried -> "✗ ${z.label}"
             else -> z.label
         }
@@ -740,13 +947,13 @@ private fun StepsCard(
             when {
                 !available -> Text("Dein Handy hat leider keinen Schrittzähler-Sensor.")
                 !permission -> {
-                    Text("Erlaube den Zugriff auf deine Schritte. Je 100 Schritte gibt es 1 EP. Nach längeren Spaziergängen wird dein Tierchen aber schmutzig.")
+                    Text("Erlaube den Zugriff auf deine Schritte. Je ${PetEngine.STEPS_PER_EXP} Schritte gibt es 1 EP. Nach längeren Spaziergängen wird dein Tierchen aber schmutzig.")
                     Button(onClick = onAllow) { Text("Schrittzähler erlauben") }
                 }
                 else -> {
                     Text("Heute gezählt: $stepsToday")
-                    Text("Bereit zum Einlösen: $pending (= ${pending / 100} EP)")
-                    Button(onClick = onRedeem, enabled = pending >= 100) { Text("Einlösen") }
+                    Text("Bereit zum Einlösen: $pending (= ${pending / PetEngine.STEPS_PER_EXP} EP)")
+                    Button(onClick = onRedeem, enabled = pending >= PetEngine.STEPS_PER_EXP) { Text("Einlösen") }
                     Text(
                         "Alle ${PetEngine.STEPS_PER_DIRT} Schritte gibt es einen Schmutzfleck zum Putzen.",
                         style = MaterialTheme.typography.labelSmall,
@@ -758,33 +965,3 @@ private fun StepsCard(
 }
 
 /** Statuswerte als Ringe um ihr Symbol, direkt unter der EP-Leiste. */
-@Composable
-private fun StatRings(s: PetState) {
-    val stats = listOf(
-        Triple("🍙", "Sattheit", s.satiety), Triple("💖", "Laune", s.happiness), Triple("🫧", "Hygiene", s.hygiene),
-        Triple("⚡", "Energie", s.energy), Triple("➕", "Gesundheit", s.health), Triple("🤝", "Vertrauen", s.trust),
-    )
-    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            stats.forEach { (icon, label, value) ->
-                val v = value.coerceIn(0f, 100f)
-                val color = when { v < 25f -> Color(0xFFE5484D); v < 50f -> Color(0xFFF5A524); else -> Color(0xFF46A758) }
-                val track = MaterialTheme.colorScheme.surfaceVariant
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                        Canvas(Modifier.fillMaxSize()) {
-                            val sw = 4.5.dp.toPx()
-                            val inset = sw / 2
-                            val arcSize = androidx.compose.ui.geometry.Size(size.width - sw, size.height - sw)
-                            drawArc(track, 0f, 360f, false, topLeft = Offset(inset, inset), size = arcSize, style = Stroke(sw))
-                            drawArc(color, -90f, 360f * v / 100f, false, topLeft = Offset(inset, inset), size = arcSize, style = Stroke(sw, cap = StrokeCap.Round))
-                        }
-                        Text(icon, fontSize = 18.sp)
-                    }
-                    Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false, fontSize = 10.sp)
-                    Text("${v.toInt()}", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-}

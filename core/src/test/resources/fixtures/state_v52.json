@@ -1,0 +1,409 @@
+{
+    "name": "Enko",
+    "bornAt": 1793272000000,
+    "lastUpdate": 1795000000000,
+    "satiety": 63.5,
+    "happiness": 81.25,
+    "hygiene": 44.0,
+    "energy": 92.0,
+    "health": 97.0,
+    "poops": 2,
+    "sleeping": false,
+    "stage": "CHILD",
+    "level": 12,
+    "exp": 37,
+    "totalExp": 4321,
+    "minutesSincePoop": 12.5,
+    "goodCareMinutes": 33.0,
+    "petWindowStart": 1794999999000,
+    "petCount": 2,
+    "snackWindowStart": 1794999998000,
+    "snackCount": 1,
+    "pendingSteps": 456,
+    "stepsRedeemedTotal": 78900,
+    "gamesWon": 14,
+    "battlesWon": 6,
+    "trust": 71.5,
+    "kindCount": 88,
+    "annoyCount": 3,
+    "knownLikes": [
+        "BERRIES",
+        "FISH"
+    ],
+    "knownDislikes": [
+        "RICEBALL"
+    ],
+    "sweetsWindowStart": 1794999997000,
+    "sweetsCount": 2,
+    "sluggishUntil": 1794999999990,
+    "scratchFoundDay": 20770,
+    "scratchTriedDay": 20771,
+    "scratchTried": [
+        "EARS",
+        "BELLY"
+    ],
+    "walkSteps": 900,
+    "dirt": 1,
+    "trainAtk": 5,
+    "trainDef": 4,
+    "trainSpd": 3,
+    "trainPsi": 2,
+    "plots": [
+        {
+            "plantedAt": 1794999950000,
+            "lastWateredDay": -1,
+            "waterDays": 0,
+            "v": 2,
+            "berry": "BLUE",
+            "waterings": 2,
+            "lastWaterAt": 1794999960000,
+            "lastCountedAt": 1794999960000,
+            "cleanWaterings": 0,
+            "fertilized": false,
+            "rolledDay": -1,
+            "weedAt": 0,
+            "weedSince": 0,
+            "snailAt": 0,
+            "snailSince": 0,
+            "snailBites": 0,
+            "rainedDay": -1
+        },
+        {
+            "plantedAt": 1794999910000,
+            "lastWateredDay": 20760,
+            "waterDays": 2,
+            "v": 0,
+            "berry": "BLUE",
+            "waterings": 0,
+            "lastWaterAt": 0,
+            "lastCountedAt": 0,
+            "cleanWaterings": 0,
+            "fertilized": false,
+            "rolledDay": -1,
+            "weedAt": 0,
+            "weedSince": 0,
+            "snailAt": 0,
+            "snailSince": 0,
+            "snailBites": 0,
+            "rainedDay": -1
+        },
+        {
+            "plantedAt": 0,
+            "lastWateredDay": -1,
+            "waterDays": 0,
+            "v": 0,
+            "berry": "BLUE",
+            "waterings": 0,
+            "lastWaterAt": 0,
+            "lastCountedAt": 0,
+            "cleanWaterings": 0,
+            "fertilized": false,
+            "rolledDay": -1,
+            "weedAt": 0,
+            "weedSince": 0,
+            "snailAt": 0,
+            "snailSince": 0,
+            "snailBites": 0,
+            "rainedDay": -1
+        }
+    ],
+    "berryStock": 3,
+    "starBerries": 1,
+    "psiBerries": 2,
+    "goldBerries": 1,
+    "goldSeeds": 1,
+    "bedsUnlocked": 4,
+    "compost": 2,
+    "fertilizer": 1,
+    "canLevel": 2,
+    "harvestsTotal": 9,
+    "berriesHarvested": [
+        "BLUE",
+        "STAR"
+    ],
+    "smoothiesFound": [
+        "s1"
+    ],
+    "gardenRewards": [
+        "r1"
+    ],
+    "questDay": 20771,
+    "questProgress": {
+        "FEED": 2,
+        "STEPS": 1500
+    },
+    "questsClaimed": [
+        "FEED"
+    ],
+    "stardust": 777,
+    "stardustDay": 20771,
+    "stardustFromGames": 40,
+    "keys": 2,
+    "keySteps": 1234,
+    "healPotions": 2,
+    "psiPotions": 1,
+    "energyDrinkDay": 20771,
+    "energyDrinksToday": 1,
+    "ownedMoves": [
+        "m_owned"
+    ],
+    "equippedMoves": [
+        "m_eq"
+    ],
+    "items": [
+        "i1",
+        "i2"
+    ],
+    "headItem": "i1",
+    "eyesItem": "i2",
+    "charmItem": "i3",
+    "placedDeco": [
+        "d1"
+    ],
+    "dungeonProgress": 3,
+    "bossesBeaten": [
+        4
+    ],
+    "depthRecord": 5,
+    "run": {
+        "floor": 0,
+        "seed": 56275041307648,
+        "columns": [
+            [
+                "FIGHT"
+            ],
+            [
+                "FIGHT",
+                "EVENT"
+            ],
+            [
+                "EVENT",
+                "FIGHT"
+            ],
+            [
+                "REST",
+                "EVENT"
+            ],
+            [
+                "FIGHT",
+                "CHEST"
+            ],
+            [
+                "GUARD"
+            ]
+        ],
+        "step": 0,
+        "chosen": [
+            0
+        ],
+        "hp": 131,
+        "maxHp": 131,
+        "dust": 0,
+        "exp": 0,
+        "items": [],
+        "moves": [],
+        "defeated": 0,
+        "chests": 0,
+        "healPotions": 2,
+        "psiPotions": 1,
+        "room": "FIGHT",
+        "battle": {
+            "seed": 6946053688466656650,
+            "round": 1,
+            "pet": {
+                "id": 0,
+                "name": "Enko",
+                "emoji": "🐾",
+                "isPet": true,
+                "enemy": null,
+                "boss": null,
+                "body": null,
+                "front": true,
+                "level": 12,
+                "maxHp": 131,
+                "hp": 131,
+                "atk": 32,
+                "def": 46,
+                "spd": 61,
+                "psiStat": 39,
+                "elite": false,
+                "stages": {},
+                "status": {},
+                "immune": {},
+                "intent": null,
+                "pattern": 0,
+                "counter": 0,
+                "acted": 0,
+                "shells": 0,
+                "heat": 0,
+                "carried": 0,
+                "fled": false
+            },
+            "enemies": [
+                {
+                    "id": 1,
+                    "name": "Mottenflatter",
+                    "emoji": "🦋",
+                    "isPet": false,
+                    "enemy": "MOTH",
+                    "boss": null,
+                    "body": "QUICK",
+                    "front": false,
+                    "level": 5,
+                    "maxHp": 36,
+                    "hp": 36,
+                    "atk": 12,
+                    "def": 12,
+                    "spd": 17,
+                    "psiStat": 12,
+                    "elite": false,
+                    "stages": {},
+                    "status": {},
+                    "immune": {},
+                    "intent": {
+                        "kind": "TRICK",
+                        "label": "Staubwolke"
+                    },
+                    "pattern": 2,
+                    "counter": 0,
+                    "acted": 0,
+                    "shells": 0,
+                    "heat": 0,
+                    "carried": 0,
+                    "fled": false
+                },
+                {
+                    "id": 2,
+                    "name": "Staubfluse",
+                    "emoji": "🌫️",
+                    "isPet": false,
+                    "enemy": "DUST_BUNNY",
+                    "boss": null,
+                    "body": "SOFT",
+                    "front": true,
+                    "level": 5,
+                    "maxHp": 23,
+                    "hp": 23,
+                    "atk": 9,
+                    "def": 9,
+                    "spd": 15,
+                    "psiStat": 9,
+                    "elite": false,
+                    "stages": {},
+                    "status": {},
+                    "immune": {},
+                    "intent": {
+                        "kind": "ATTACK",
+                        "label": "Angriff"
+                    },
+                    "pattern": 1,
+                    "counter": 0,
+                    "acted": 0,
+                    "shells": 0,
+                    "heat": 0,
+                    "carried": 0,
+                    "fled": false
+                }
+            ],
+            "psi": 10.0,
+            "maxPsi": 10,
+            "moves": [
+                "PSI_WAVE",
+                "BUMP",
+                "PAW",
+                "DUCK"
+            ],
+            "empowered": [],
+            "rule": "NONE",
+            "world": 1,
+            "bonuses": {
+                "typeDmg": {},
+                "bodyDmg": {},
+                "accuracy": 0,
+                "crit": 0,
+                "psiRegen": 0,
+                "startPsi": 0,
+                "healPerRound": 0,
+                "netDodge": 0,
+                "burnTaken": 0,
+                "accLock": false,
+                "noFreezeSlow": false,
+                "noConfusion": false,
+                "longerBurn": false,
+                "shorterSleep": false,
+                "setWorlds": []
+            },
+            "healPotions": 2,
+            "psiPotions": 1,
+            "lastPetMove": null,
+            "purrUsed": false,
+            "lucky": false,
+            "ducking": false,
+            "bossPhase": 1,
+            "roundsWithoutBlunt": 0,
+            "icicleWarning": false,
+            "nextId": 100,
+            "stolenDust": 0,
+            "defeated": [],
+            "bossDefeated": false,
+            "log": [
+                "2 Gegner tauchen auf!"
+            ],
+            "hits": [],
+            "outcome": null,
+            "levels": {},
+            "trap": false,
+            "trapHit": false,
+            "charging": null,
+            "chargeTarget": null,
+            "mirrorPaw": false,
+            "crystal": 0,
+            "lavaHeart": 0,
+            "sureHit": false,
+            "usedMove": null,
+            "combos": [],
+            "fundMove": null
+        },
+        "event": null,
+        "bridge": false,
+        "note": "",
+        "cleared": false,
+        "fundMove": null,
+        "cards": []
+    },
+    "lastRun": {
+        "floor": 2,
+        "won": true,
+        "cleared": true,
+        "dust": 30,
+        "exp": 12,
+        "items": [
+            "x"
+        ],
+        "moves": [
+            "y"
+        ],
+        "lost": [
+            "z"
+        ],
+        "text": "Bericht"
+    },
+    "moveUses": {
+        "TACKLE": 19
+    },
+    "combosFound": [
+        "c1"
+    ],
+    "floorWins": {
+        "2": 3
+    },
+    "shopDay": 20771,
+    "shopMoves": [
+        "sm"
+    ],
+    "shopItems": [
+        "si"
+    ],
+    "shopDeal": "deal",
+    "shopRerolled": true
+}

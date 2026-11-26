@@ -19,7 +19,12 @@ data class PackManifest(
         .apply { if (floating != null) put("float", floating) }
         .apply {
             val h = head?.split(',')?.mapNotNull { it.toFloatOrNull() }
-            if (h != null && h.size == 4) put("head", JSONObject().put("x", h[0].toDouble()).put("y", h[1].toDouble()).put("size", h[2].toDouble()).put("eyes", h[3].toDouble()))
+            if (h != null && (h.size == 4 || h.size == 8 || h.size == 9)) put("head", JSONObject().put("x", h[0].toDouble()).put("y", h[1].toDouble()).put("size", h[2].toDouble()).put("eyes", h[3].toDouble())
+                .apply {
+                    // Befund 06: optionale Mund- und Schwanzpunkte (fehlen = automatisch)
+                    if (h.size >= 8 && h[4] >= 0f) put("mouth", JSONObject().put("x", h[4].toDouble()).put("y", h[5].toDouble()))
+                    if (h.size >= 8 && h[6] >= 0f) put("tail", JSONObject().put("x", h[6].toDouble()).put("y", h[7].toDouble()))
+                })
         }
         .toString(2)
 
@@ -30,7 +35,12 @@ data class PackManifest(
             PackManifest(
                 o.optString("name", ""), o.optString("petName", ""), o.optString("author", ""),
                 if (o.has("float")) o.optBoolean("float", true) else null,
-                h?.let { "${it.optDouble("x", 0.5)},${it.optDouble("y", 0.1)},${it.optDouble("size", 0.42)},${it.optDouble("eyes", 0.3)}" },
+                h?.let {
+                    val base = "${it.optDouble("x", 0.5)},${it.optDouble("y", 0.1)},${it.optDouble("size", 0.42)},${it.optDouble("eyes", 0.3)}"
+                    val mo = it.optJSONObject("mouth"); val ta = it.optJSONObject("tail")
+                    if (mo == null && ta == null) base
+                    else base + ",${mo?.optDouble("x", -1.0) ?: -1.0},${mo?.optDouble("y", -1.0) ?: -1.0},${ta?.optDouble("x", -1.0) ?: -1.0},${ta?.optDouble("y", -1.0) ?: -1.0}"
+                },
             )
         }.getOrNull()
     }
@@ -76,6 +86,17 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
     var headPoint: String?
         get() = prefs.getString("head_${store.petId}", null)
         set(v) { prefs.edit().putString("head_${store.petId}", v).apply() }
+
+    /** Kopf-, Mund- und Schwanzpunkte je Stufe (Runde 3: Proportionen ändern sich mit dem Alter). null = Wert des Pakets. */
+    fun headPointFor(stage: String): String? = prefs.getString("head_${store.petId}_$stage", null) ?: headPoint
+    fun setHeadPointFor(stage: String, v: String?) { prefs.edit().putString("head_${store.petId}_$stage", v).apply() }
+    fun hasStageHead(stage: String): Boolean = prefs.contains("head_${store.petId}_$stage")
+    fun clearStageHeads() { prefs.edit().apply { listOf("BABY", "CHILD", "TEEN", "ADULT").forEach { remove("head_${store.petId}_$it") } }.apply() }
+
+    /** Hat die Figur einen Schwanz? null = noch nicht gefragt (automatisch). Pro Tierchen. */
+    var hasTail: Boolean?
+        get() = prefs.getString("tail_${store.petId}", null)?.let { it == "yes" }
+        set(v) { prefs.edit().apply { if (v == null) remove("tail_${store.petId}") else putString("tail_${store.petId}", if (v) "yes" else "no") }.apply() }
 
     fun list(): List<PackInfo> = root.listFiles()?.filter { it.isDirectory }?.mapNotNull { info(it) }?.sortedBy { it.name.lowercase() } ?: emptyList()
 

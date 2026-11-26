@@ -49,7 +49,9 @@ enum class Zone(val label: String, val row: Float, val side: Boolean) {
     }
 
     companion object {
-        fun favoriteOn(epochDay: Long, seed: Long): Zone = entries[Random(seed xor (epochDay * 1_000_003L)).nextInt(entries.size)]
+        /** Lieblingsstelle des Tages; [allowed] ohne Schwanz bei Figuren ohne Schwanz. */
+        fun favoriteOn(epochDay: Long, seed: Long, allowed: List<Zone> = entries): Zone =
+            allowed.ifEmpty { entries }.let { it[Random(seed xor (epochDay * 1_000_003L)).nextInt(it.size)] }
     }
 }
 

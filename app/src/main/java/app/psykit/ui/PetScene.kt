@@ -125,7 +125,7 @@ private fun maskOf(bmp: android.graphics.Bitmap): Triple<Int, Int, BooleanArray>
 
 internal fun footprintOf(sprite: Sprite): Footprint? = runCatching {
     val anim = sprite.animated
-    if (anim != null) {
+    if (anim != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
         var w = 0; var h = 0
         val bmp = ImageDecoder.decodeBitmap(ImageDecoder.createSource(anim)) { d, info, _ ->
             d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
@@ -300,14 +300,14 @@ fun PetScene(
             val animFile = custom.animated
             if (animFile != null) {
                 val drawable = remember(animFile, animFile.lastModified()) {
-                    runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(animFile)) }.getOrNull()
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(animFile)) }.getOrNull() else null
                 }
                 AndroidView(
                     factory = { ctx -> ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_CENTER } },
                     update = { iv ->
                         if (iv.drawable !== drawable) {
                             iv.setImageDrawable(drawable)
-                            (drawable as? AnimatedImageDrawable)?.start()
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) (drawable as? AnimatedImageDrawable)?.start()
                         }
                     },
                     modifier = figure,

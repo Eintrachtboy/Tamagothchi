@@ -239,6 +239,8 @@ fun PetScreen(vm: PetViewModel) {
             hummed = false
         }
     }
+    // Zurück-Taste führt aus Garten und Unteransichten ins Zuhause
+    androidx.activity.compose.BackHandler(enabled = mode != Mode.STROKE && mode != Mode.FEED && mode != Mode.CLEAN && mode != Mode.SLEEP) { mode = Mode.STROKE }
     LaunchedEffect(mode) {
         handPos = null; toolPos = null; strokeHint = ""
         if (mode == Mode.CLEAN) cleanSession++
@@ -465,6 +467,11 @@ fun PetScreen(vm: PetViewModel) {
                     }
                 }
             } else if (mode == Mode.GARDEN) {
+                // Garten als eigener Raum: sichtbarer Eingang über „Garten“ unten, Rückweg hier. Kein Wischen auf der Szene.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { mode = Mode.STROKE }) { Text("← Nach Hause") }
+                    Text("🌱 Garten", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
                 GardenScene(
                     vm, s, sprite, gardenSeed, fertilizeMode,
                     onFertilized = { fertilizeMode = false },

@@ -152,7 +152,8 @@ object DungeonEngine {
     const val KEY_STEPS = 3000L
     const val MAX_KEYS = 3
     const val KEY_PRICE = 100
-    const val ENTRY_ENERGY = 25f
+    const val ENTRY_ENERGY = 20f
+    const val MIN_ENERGY_TO_ENTER = 30f
     const val ENTRY_SATIETY = 10f
     const val ROOM_ENERGY = 3f
     const val END_HYGIENE = 15f
@@ -167,7 +168,7 @@ object DungeonEngine {
         p.run != null -> "${p.name} ist schon im Dungeon."
         p.stage == Stage.EGG -> "Erst muss das Ei schlüpfen."
         p.sleeping -> "${p.name} schläft gerade."
-        p.energy < 30f -> "${p.name} ist zu müde (Energie mindestens 30)."
+        p.energy < MIN_ENERGY_TO_ENTER -> "${p.name} ist zu müde (Energie mindestens ${MIN_ENERGY_TO_ENTER.toInt()})."
         p.health < 40f -> "${p.name} ist nicht fit genug (Gesundheit mindestens 40)."
         !unlocked(p, index) -> "Diese Ebene ist noch verschlossen."
         p.keys <= 0 -> "Kein Schlüssel mehr. Morgen gibt es einen neuen, oder für Schritte und im Laden."

@@ -97,7 +97,7 @@ class GardenTest {
         assertEquals(4, GardenEngine.beds(s).size)
         s = GardenEngine.buyCan(s).state
         assertEquals(1, s.canLevel)
-        repeat(3) { s = GardenEngine.addCompost(s) }
+        repeat(GardenEngine.COMPOST_PER_FERTILIZER) { s = GardenEngine.addCompost(s) }
         assertEquals(1, s.fertilizer)
         assertEquals(0, s.compost)
     }
@@ -125,8 +125,9 @@ class GardenTest {
     }
 
     @Test fun shovelledPoopBecomesFertilizer() {
-        var s = pet().copy(poops = 4)
-        repeat(3) { s = app.psykit.core.engine.PetEngine.removePoop(s) }
+        val per = GardenEngine.COMPOST_PER_FERTILIZER
+        var s = pet().copy(poops = per + 1)
+        repeat(per) { s = app.psykit.core.engine.PetEngine.removePoop(s) }
         assertEquals(1, s.poops)
         assertEquals(1, s.fertilizer)
         assertEquals(0, s.compost)

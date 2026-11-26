@@ -162,7 +162,7 @@ private fun FloorSelect(s: PetState, vm: PetViewModel) {
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Eintritt: 🗝️ 1 · ⚡ 30 · ❤️ 40 · wach", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            Text("Eintritt: 🗝️ 1 · ⚡ mind. ${DungeonEngine.MIN_ENERGY_TO_ENTER.toInt()} (kostet ${DungeonEngine.ENTRY_ENERGY.toInt()}, je Raum ${DungeonEngine.ROOM_ENERGY.toInt()}, in Hitze doppelt) · ❤️ 40 · wach", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
             TextButton(onClick = { info = !info }) { Text(if (info) "Regeln zu" else "ℹ️ Regeln") }
         }
         if (info) DungeonRules()
@@ -244,7 +244,7 @@ private fun DungeonRules() {
             Text("• Jede Ebene versteckt eine Attacke, die es nirgends zu kaufen gibt. Jeder Sieg über Wächter oder Boss gibt 40 % Chance, spätestens beim dritten Sieg gehört sie dir.", style = MaterialTheme.typography.bodySmall)
             Text("• Nach normalen Kämpfen und Elitekämpfen wählst du eine von drei Fundkarten: eine Attacke nur für diesen Lauf, auf einem 5. Platz. Überspringen gibt +${DungeonEngine.SKIP_CARD_DUST} ✨.", style = MaterialTheme.typography.bodySmall)
             Text("• Kombos: Manche Zustände und Attackentypen passen besonders gut zusammen. Probier aus, was passiert! Gefundene Kombos stehen im Sammelbuch.", style = MaterialTheme.typography.bodySmall)
-            Text("• Attacken werden mit Übung besser: nach ${MoveId.LEVEL2_USES} Einsätzen ★ (+15 %), nach ${MoveId.LEVEL3_USES} ★★ (+30 % und ein Extra). Eine neue Stufe gilt ab dem nächsten Kampf.", style = MaterialTheme.typography.bodySmall)
+            Text("• Attacken werden mit Übung besser: nach ${MoveId.LEVEL2_USES} Einsätzen ★ (+${MoveId.LEVEL2_PERCENT} %), nach ${MoveId.LEVEL3_USES} ★★ (+${MoveId.LEVEL3_PERCENT} % und ein Extra). Eine neue Stufe gilt ab dem nächsten Kampf.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

@@ -536,7 +536,7 @@ object BattleEngine {
             else -> listOf(possible.firstOrNull { it.id == targetId } ?: possible.first())
         }
         st.log += "${pet.name} setzt ${m.label} ein!"
-        val lvMult = when (level(st, m)) { 3 -> 1.3; 2 -> 1.15; else -> 1.0 }
+        val lvMult = 1.0 + MoveId.bonusFor(level(st, m))
         fun strike(v: Fighter, h: Int) {
                 if (!v.alive) return
                 // Treffer?
@@ -759,7 +759,7 @@ object BattleEngine {
     private fun trapCounter(st: BattleState, e: Fighter, rng: Random) {
         if (!st.trap || !e.alive || !st.pet.alive) return
         val m = MoveId.CLAW_TRAP
-        val lvMult = when (level(st, m)) { 3 -> 1.3; 2 -> 1.15; else -> 1.0 }
+        val lvMult = 1.0 + MoveId.bonusFor(level(st, m))
         val f = TypeChart.factor(AttackType.CLAW, e.body)
         val d = (hitRaw(st.pet, e, (m.power * lvMult).roundToInt(), AttackType.CLAW, rng) * f * bossTaken(st, e, false)).roundToInt().coerceAtLeast(1)
         st.trapHit = true

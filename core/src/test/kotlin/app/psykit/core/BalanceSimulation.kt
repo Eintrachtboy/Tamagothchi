@@ -39,8 +39,9 @@ class BalanceSimulation {
 
     private data class Res(val won: Boolean, val rounds: Int, val hpLeft: Double)
 
-    private fun fight(moves: List<MoveId>, level: Int, specs: List<EnemySpec>, world: Int, seed: Long): Res {
-        val p = dt.pet(level, moves, moves)
+    private fun fight(moves: List<MoveId>, level: Int, specs: List<EnemySpec>, world: Int, seed: Long,
+                      tune: (app.psykit.core.model.PetState) -> app.psykit.core.model.PetState = { it }): Res {
+        val p = tune(dt.pet(level, moves, moves))
         var st = BattleEngine.start(p, specs, FloorRule.NONE, world, seed)
         var guard = 0
         while (st.outcome == null && guard++ < 80) st = BattleEngine.playRound(st, dt.choose(st))
@@ -155,6 +156,60 @@ class BalanceSimulation {
         out.append(sets)
         out.append("\nHinweis: einfache Spiel-KI aus DungeonTest.choose, ohne Tränke, ohne Training, Regeln der Ebenen ausgeschaltet.\n")
         val file = File("build/balance-realistic.md")
+        file.parentFile.mkdirs()
+        file.writeText(out.toString())
+        println(out)
+    }
+
+    /**
+     * Dritte Messung: Wertentwicklung. Angriff wächst im Spiel mit 2·Level, Psi mit 3·Level (Battle.kt).
+     * Varianten werden über Trainingspunkte nachgebildet (1 Training = +2 Wert), ohne Spielcode zu ändern:
+     * Angriff 2,5·Level = +Level/4 Training, Angriff 3·Level = +Level/2 Training.
+     * Trainingsstand „typisch“ = jeder Wert Level/2 Training (zusätzlich).
+     */
+    @Test fun simulateGrowth() {
+        if (System.getenv("BALANCE") != "1") return
+        val n = 80
+        val types = AttackType.entries
+        val growth = listOf("Angriff 2·Lv (jetzt)" to 0.0, "Angriff 2,5·Lv" to 0.25, "Angriff 3·Lv" to 0.5)
+        val training = listOf("ohne Training" to 0.0, "typisches Training (Lv/2 je Wert)" to 0.5)
+        val floors = Floors.all.filter { !it.isDepth }
+        val out = StringBuilder("# Balance: Wertentwicklung\n\n")
+        out.append("Erreichbare Attacken je Ebene wie in der zweiten Messung. $n Kämpfe je Feld. Normale Ebenen = Kampfräume aller 15 Nicht-Boss-Ebenen.\n\n")
+        out.append("| Wachstum | Training | " + types.joinToString(" | ") { "${it.emoji}" } + " | Spanne | 🎯 Bosse mit Schwäche-Set |\n|---|---|" + types.joinToString("") { "---|" } + "---|---|\n")
+        val detail = StringBuilder()
+        for ((gName, g) in growth) for ((tName, tr) in training) {
+            fun tune(lv: Int): (app.psykit.core.model.PetState) -> app.psykit.core.model.PetState = { p ->
+                val extraAtk = (lv * g).toInt()
+                val t = (lv * tr).toInt()
+                p.copy(trainAtk = extraAtk + t, trainDef = t, trainSpd = t, trainPsi = t)
+            }
+            val perType = types.map { t ->
+                val res = floors.filter { !it.isBoss }.flatMap { f ->
+                    val own = available(f.index).filter { it.type == t }.sortedByDescending { it.power * it.hits }.take(3)
+                    if (own.isEmpty()) emptyList() else (0 until n).map {
+                        val rng = Random(31_000L + it * 13L + f.index)
+                        fight(own + MoveId.DUCK, f.level, DungeonEngine.encounter(f, RoomType.FIGHT, rng), f.world, rng.nextLong(), tune(f.level))
+                    }
+                }
+                if (res.isEmpty()) 0 else res.count { it.won } * 100 / res.size
+            }
+            // Spieler-nahes Set für Bosse: stärkste Attacke des Schwäche-Typs + 2 stärkste andere + Ducken
+            val bossRes = floors.filter { it.isBoss }.map { f ->
+                val av = available(f.index).filter { it.type != null }.sortedByDescending { it.power * it.hits }
+                val weak = DungeonEngine.weakness(f)
+                val set = (listOfNotNull(av.firstOrNull { it.type == weak }) + av.filter { it.type != weak }.take(2)).take(3) + MoveId.DUCK
+                val wins = (0 until n).count {
+                    val rng = Random(41_000L + it * 13L + f.index)
+                    fight(set, f.level, DungeonEngine.encounter(f, RoomType.BOSS, rng), f.world, rng.nextLong(), tune(f.level)).won
+                }
+                f.name.substringBefore(',') to wins * 100 / n
+            }
+            out.append("| $gName | $tName | ${perType.joinToString(" | ")} | ${perType.max() - perType.min()} | ${bossRes.joinToString(", ") { "${it.first} ${it.second}" }} |\n")
+        }
+        out.append("\nSpanne = beste minus schlechteste Siegquote der sechs Typen (kleiner = ausgeglichener).\n")
+        out.append("Hinweis: einfache Spiel-KI, ohne Tränke, Ausrüstung und Ebenenregeln.\n")
+        val file = File("build/balance-growth.md")
         file.parentFile.mkdirs()
         file.writeText(out.toString())
         println(out)

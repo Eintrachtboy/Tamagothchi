@@ -96,7 +96,7 @@ import kotlin.math.roundToInt
 /** Was man gerade mit dem Tierchen macht. */
 enum class Mode(val icon: String, val label: String) {
     FEED("🍙", "Füttern"), STROKE("🤚", "Streicheln"), CLEAN("🧽", "Putzen"),
-    SLEEP("🌙", "Schlafen"), PLAY("🎲", "Spielen"), BONUS("🫐", "Bonus"),
+    SLEEP("🌙", "Schlafen"), PLAY("🎲", "Spielen"),
     GARDEN("🌱", "Garten"), QUESTS("📋", "Aufgaben"), DUNGEON("⚔️", "Dungeon"), SHOP("🛍️", "Laden"),
 }
 
@@ -385,6 +385,35 @@ fun PetScreen(vm: PetViewModel) {
                     wear = Wearables.of(s, headPoint),
                     footprintIn = footprint,
                     overlay = {
+                        // Zustandsringe am oberen Bildrand (Runde 3)
+                        if (!isEgg) Box(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp)) { MiniStats(s) }
+                        // Seitliche Leiste rechts im freien Rand neben der Figur (Runde 3)
+                        if (!isEgg) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp, top = 52.dp)) {
+                            CareTray(
+                                mode = mode, s = s, dragging = dragFood, tool = tool, onTool = { tool = it },
+                                onDone = { finishCleaning(); cleanSession++ },
+                                light = light, onLight = { light = it },
+                                humming = humming, hummed = hummed,
+                                onHum = {
+                                    if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startHumming()
+                                    else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                },
+                                onWake = { vm.wake(); blanket = 0f; light = 1f },
+                                onFoodStart = { f, root -> dragFood = f; dragPos = root },
+                                onFoodMove = { dragPos += it },
+                                onFoodDrop = {
+                                    val f = dragFood
+                                    dragFood = null
+                                    if (f != null) {
+                                        val b = body
+                                        val hit = if (b != null) b.mouthHit(local(dragPos), 56f * density) else mouthHit(local(dragPos), sceneSize)
+                                        if (hit) vm.feed(f)
+                                        else vm.say("Zieh das Essen bis an ${s.name}s Mund oder tipp es einfach an.")
+                                    }
+                                },
+                                onFoodTap = { f -> vm.feed(f) },
+                            )
+                        }
                         when (mode) {
                             Mode.FEED -> body?.let { MouthMarker(it.mouth, dragFood != null) }
                             Mode.STROKE -> if (handPos == null) scratchPos?.let { p ->
@@ -411,63 +440,17 @@ fun PetScreen(vm: PetViewModel) {
                     },
                 )
                 MessageText(message.ifEmpty { statusLine(s) })
-                if (!isEgg) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                    Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        when (mode) {
-                            Mode.FEED -> FoodTray(
-                                s = s,
-                                dragging = dragFood,
-                                onStart = { f, root -> dragFood = f; dragPos = root },
-                                onMove = { dragPos += it },
-                                onDrop = {
-                                    val f = dragFood
-                                    dragFood = null
-                                    if (f != null) {
-                                        val b = body
-                                        val hit = if (b != null) b.mouthHit(local(dragPos), 56f * density) else mouthHit(local(dragPos), sceneSize)
-                                        if (hit) vm.feed(f)
-                                        else vm.say("Zieh das Essen bis an ${s.name}s Mund oder tipp es einfach an.")
-                                    }
-                                },
-                                // WCAG 2.5.7: Antippen füttert ebenfalls, ohne Ziehen
-                                onTap = { f -> vm.feed(f) },
-                            )
-                            Mode.STROKE -> {
-                                Text("Streicheln: langsam über ${s.name} wischen. Kraulen: Finger ruhig auf eine Stelle halten.", style = MaterialTheme.typography.bodySmall)
-                                ScratchSpots(s, vm.repo.zone, body?.map?.zones ?: Zone.entries)
-                            }
-                            Mode.CLEAN -> {
-                                Text(cleanNextStep, style = MaterialTheme.typography.bodyMedium)
-                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    FilterChip(selected = tool == 0, onClick = { tool = 0 }, label = { Text("🧽 Schwamm") })
-                                    FilterChip(selected = tool == 1, onClick = { tool = 1 }, label = { Text("🚿 Dusche") })
-                                    FilterChip(selected = tool == 2, onClick = { tool = 2 }, label = { Text("🧹 Schaufel") })
-                                    Spacer(Modifier.weight(1f))
-                                    TextButton(onClick = { finishCleaning(); cleanSession++ }) { Text("Fertig") }
-                                }
-                            }
-                            Mode.SLEEP -> {
-                                if (s.sleeping) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("${s.name} schläft. Psst!", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                                        Button(onClick = { vm.wake(); blanket = 0f; light = 1f }) { Text("☀️ Wecken") }
-                                    }
-                                } else {
-                                    Text("Zieh die Decke von unten über ${s.name} und dreh das Licht runter.", style = MaterialTheme.typography.bodySmall)
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("💡", Modifier.width(28.dp))
-                                        Slider(value = light, onValueChange = { light = it }, modifier = Modifier.weight(1f))
-                                        TextButton(onClick = {
-                                            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startHumming()
-                                            else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                        }, enabled = !humming) {
-                                            Text(if (humming) "🎵 …" else if (hummed) "🎵 ✓" else "🎵 Summen")
-                                        }
-                                    }
-                                }
-                            }
-                            else -> {}
-                        }
+                // Feste Höhe für alle Pflegemodi: die Szene springt beim Wechsel nicht mehr (Runde 3)
+                if (!isEgg) Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.CenterStart) {
+                    when (mode) {
+                        Mode.FEED -> Text("Futter rechts zum Mund ziehen oder antippen. Zu viel Süßes macht träge.", style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                        Mode.STROKE -> ScratchSpots(s, vm.repo.zone, body?.map?.zones ?: Zone.entries)
+                        Mode.CLEAN -> Text(cleanNextStep, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                        Mode.SLEEP -> Text(
+                            if (s.sleeping) "${s.name} schläft. Psst!" else "Decke von unten hochziehen, rechts das Licht dimmen.",
+                            style = MaterialTheme.typography.bodySmall, maxLines = 2,
+                        )
+                        else -> {}
                     }
                 }
             } else if (mode == Mode.GARDEN) {
@@ -502,7 +485,8 @@ fun PetScreen(vm: PetViewModel) {
                             when (mode) {
                                 Mode.PLAY -> {
                                     Text("Such dir ein Spiel aus:", fontWeight = FontWeight.Bold)
-                                    GameKind.daily.forEach { g ->
+                                    // Beerenfang ist ein normales Spiel in der Liste (früher eigener Modus „Bonus“)
+                                    GameKind.entries.forEach { g ->
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Column(Modifier.weight(1f)) {
                                                 Text(g.label, fontWeight = FontWeight.Bold)
@@ -517,11 +501,6 @@ fun PetScreen(vm: PetViewModel) {
                                 Mode.QUESTS -> QuestPanel(s, vm)
                                 Mode.DUNGEON -> DungeonPanel(s, onOpen = { showDungeon = true })
                                 Mode.SHOP -> ShopPanel(s, onShop = { showShop = true }, onBook = { showBook = true })
-                                Mode.BONUS -> {
-                                    Text("Beerenfang", fontWeight = FontWeight.Bold)
-                                    Text(gameInfo(GameKind.BERRIES) + " Trainiert ${GameKind.BERRIES.trains}.", style = MaterialTheme.typography.bodyMedium)
-                                    Button(onClick = { if (vm.checkPlay() == null) game = GameKind.BERRIES }) { Text("Starten") }
-                                }
                                 else -> {}
                             }
                         }
@@ -700,19 +679,39 @@ private fun ModeBar(mode: Mode, onSelect: (Mode) -> Unit) {
     }
 }
 
+/**
+ * Schmale Leiste am rechten Rand der Szene (Runde 3): Futter, Putzwerkzeuge oder Licht und Summen.
+ * Sie liegt im freien Rand neben der Figur und verdeckt sie nicht; bei vielen Einträgen scrollt nur die Leiste.
+ */
 @Composable
-private fun FoodTray(
-    s: PetState,
-    dragging: Food?,
-    onStart: (Food, Offset) -> Unit,
-    onMove: (Offset) -> Unit,
-    onDrop: () -> Unit,
-    onTap: (Food) -> Unit,
+private fun CareTray(
+    mode: Mode, s: PetState, dragging: Food?, tool: Int, onTool: (Int) -> Unit, onDone: () -> Unit,
+    light: Float, onLight: (Float) -> Unit, humming: Boolean, hummed: Boolean, onHum: () -> Unit, onWake: () -> Unit,
+    onFoodStart: (Food, Offset) -> Unit, onFoodMove: (Offset) -> Unit, onFoodDrop: () -> Unit, onFoodTap: (Food) -> Unit,
 ) {
-    Text("Zum Mund ziehen oder antippen. Zu viel Süßes macht träge.", style = MaterialTheme.typography.bodySmall)
-    Food.entries.filter { it != Food.GARDEN || s.berryStock > 0 }.chunked(5).forEach { row ->
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            row.forEach { f ->
+    if (mode != Mode.FEED && mode != Mode.CLEAN && mode != Mode.SLEEP) return
+    val shape = RoundedCornerShape(18.dp)
+    Column(
+        Modifier
+            .width(54.dp)
+            .heightIn(max = 420.dp)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f), shape)
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        @Composable
+        fun slot(label: String, selected: Boolean = false, onClick: () -> Unit, content: @Composable () -> Unit) {
+            Box(
+                Modifier.size(46.dp)
+                    .background(if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(14.dp))
+                    .clickable(onClickLabel = label, onClick = onClick),
+                contentAlignment = Alignment.Center,
+            ) { content() }
+        }
+        when (mode) {
+            Mode.FEED -> Food.entries.filter { it != Food.GARDEN || s.berryStock > 0 }.forEach { f ->
                 var itemPos by remember { mutableStateOf(Offset.Zero) }
                 val badge = when (f) {
                     Food.GARDEN -> "×${s.berryStock}"
@@ -721,34 +720,40 @@ private fun FoodTray(
                     else -> ""
                 }
                 Box(
-                    Modifier
-                        .weight(1f)
-                        .height(54.dp)
-                        .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(16.dp))
-                        .border(if (f.sweet) 2.dp else 0.dp, if (f.sweet) Color(0xFFFF9BC8) else Color.Transparent, RoundedCornerShape(16.dp))
+                    Modifier.size(46.dp)
+                        .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(14.dp))
+                        .border(if (f.sweet) 2.dp else 0.dp, if (f.sweet) Color(0xFFFF9BC8) else Color.Transparent, RoundedCornerShape(14.dp))
                         .onGloballyPositioned { itemPos = it.positionInRoot() }
-                        .pointerInput(f, "tap") { detectTapGestures(onTap = { onTap(f) }) }
+                        .pointerInput(f, "tap") { detectTapGestures(onTap = { onFoodTap(f) }) }
                         .pointerInput(f) {
                             detectDragGestures(
-                                onDragStart = { p -> onStart(f, itemPos + p) },
-                                onDrag = { change, amount -> change.consume(); onMove(amount) },
-                                onDragEnd = onDrop,
-                                onDragCancel = onDrop,
+                                onDragStart = { p -> onFoodStart(f, itemPos + p) },
+                                onDrag = { change, amount -> change.consume(); onFoodMove(amount) },
+                                onDragEnd = onFoodDrop,
+                                onDragCancel = onFoodDrop,
                             )
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(f.emoji, fontSize = 24.sp, modifier = Modifier.alpha(if (dragging == f) 0.3f else 1f))
-                        Text(f.label, style = MaterialTheme.typography.labelSmall, maxLines = 1)
-                    }
-                    if (badge.isNotEmpty()) Text(badge, fontSize = 12.sp, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp))
+                    Text(f.emoji, fontSize = 24.sp, modifier = Modifier.alpha(if (dragging == f) 0.3f else 1f))
+                    if (badge.isNotEmpty()) Text(badge, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd))
                 }
             }
-            repeat(5 - row.size) { Spacer(Modifier.weight(1f)) }
+            Mode.CLEAN -> {
+                slot("Schwamm", tool == 0, { onTool(0) }) { Text("🧽", fontSize = 22.sp) }
+                slot("Dusche", tool == 1, { onTool(1) }) { Text("🚿", fontSize = 22.sp) }
+                slot("Schaufel", tool == 2, { onTool(2) }) { Text("🧹", fontSize = 22.sp) }
+                slot("Fertig", false, onDone) { Text("✔️", fontSize = 20.sp) }
+            }
+            Mode.SLEEP -> if (s.sleeping) slot("Wecken", false, onWake) { Text("☀️", fontSize = 22.sp) } else {
+                // Licht in Stufen dimmen statt Schieberegler (passt in die schmale Leiste)
+                slot("Licht heller", light >= 0.95f, { onLight((light + 0.3f).coerceAtMost(1f)) }) { Text("💡", fontSize = 20.sp) }
+                slot("Licht dunkler", light <= 0.3f, { onLight((light - 0.3f).coerceAtLeast(0.1f)) }) { Text("🌑", fontSize = 20.sp) }
+                slot("Schlaflied summen", hummed, { if (!humming) onHum() }) { Text(if (humming) "…" else "🎵", fontSize = 20.sp) }
+            }
+            else -> {}
         }
     }
-    if (s.sluggish) Text("🍬 ${s.name} ist gerade träge von den Süßigkeiten.", style = MaterialTheme.typography.bodySmall)
 }
 
 private fun statusLine(s: PetState): String = when (s.stage) {
@@ -787,7 +792,7 @@ private fun CompactHeader(s: PetState, onPets: () -> Unit, onInfo: () -> Unit, o
                     val need = LevelSystem.expForNext(s.level)
                     LinearProgressIndicator(
                         progress = { (s.exp.toFloat() / need).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().height(6.dp),
+                        modifier = Modifier.fillMaxWidth(0.6f).height(4.dp),
                         color = MaterialTheme.colorScheme.secondary,
                         trackColor = MaterialTheme.colorScheme.secondaryContainer,
                         strokeCap = StrokeCap.Round,
@@ -796,10 +801,16 @@ private fun CompactHeader(s: PetState, onPets: () -> Unit, onInfo: () -> Unit, o
                 }
             }
             IconButton(onClick = onPets) { Text("🐾", fontSize = 20.sp) }
-            IconButton(onClick = onInfo) { Icon(Icons.Filled.Info, contentDescription = "Werte") }
-            IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, contentDescription = "Einstellungen") }
+            // Werte und Einstellungen in einem Menü (Runde 3)
+            var menu by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.Settings, contentDescription = "Menü") }
+                androidx.compose.material3.DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("📊 Werte") }, onClick = { menu = false; onInfo() })
+                    androidx.compose.material3.DropdownMenuItem(text = { Text("⚙️ Einstellungen") }, onClick = { menu = false; onSettings() })
+                }
+            }
         }
-        if (s.stage != Stage.EGG) MiniStats(s)
     }
 }
 

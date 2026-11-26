@@ -143,6 +143,12 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         if (r.reaction != Reaction.NONE) _reaction.value = ReactionEvent(_reaction.value.id + 1, r.reaction)
     }
     /** Lernstand pro Tierchen: Startseite dieses Spiels gesehen (Befund 34). */
+    /** Befund 28: Die Schlupf-Feier wurde gezeigt. */
+    fun markHatchSeen() { repo.update { s, _ -> (if (s.hatchSeen) s else s.copy(hatchSeen = true)) to Unit } }
+    /** Befund 31: Fundattacke merken oder wieder entfernen. */
+    fun toggleFavoriteFind(name: String) { repo.update { s, _ ->
+        s.copy(favoriteFinds = if (name in s.favoriteFinds) s.favoriteFinds - name else s.favoriteFinds + name) to Unit
+    } }
     fun markIntroSeen(kind: GameKind) = repo.update { s, _ ->
         (if (kind.name in s.gamesIntroSeen) s else s.copy(gamesIntroSeen = s.gamesIntroSeen + kind.name)) to Unit
     }

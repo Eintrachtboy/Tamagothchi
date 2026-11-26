@@ -31,7 +31,8 @@ data class ActionResult(
  * [advance] simuliert die vergangene Zeit in 5-Minuten-Schritten nach.
  */
 object PetEngine {
-    const val EGG_HATCH_MINUTES = 2L
+    /** Runde 12 (Befund 28): Das Ei schlüpft nach so vielen Millisekunden (vorher 2 Minuten). */
+    const val EGG_HATCH_MS = 30_000L
     private const val STEP_MS = 5 * 60_000L
     private const val MAX_SIM_MS = 7 * 24 * 60 * 60_000L
     private const val MINUTE = 60_000L
@@ -98,7 +99,8 @@ object PetEngine {
 
     private fun tick(s0: PetState, minutes: Float, time: Long, zone: ZoneId): PetState {
         if (s0.stage == Stage.EGG) {
-            return if (time - s0.bornAt >= EGG_HATCH_MINUTES * MINUTE) s0.copy(stage = Stage.BABY) else s0
+            // hatchSeen = false: Die Oberfläche feiert das Schlüpfen einmal
+            return if (time - s0.bornAt >= EGG_HATCH_MS) s0.copy(stage = Stage.BABY, hatchSeen = false) else s0
         }
         val h = minutes / 60f
         // Glücksbringer außerhalb des Kampfs
@@ -499,7 +501,7 @@ object PetEngine {
 
     /** Begrüßung je nach Tageszeit, Laune und Vertrauen. */
     fun greeting(s: PetState, now: Long, tz: ZoneId): String {
-        if (s.stage == Stage.EGG) return "Ein Ei! Es schlüpft in ein paar Minuten …"
+        if (s.stage == Stage.EGG) return "Ein Ei! Gleich schlüpft etwas …"
         val n = s.name
         if (s.sleeping) return "$n schläft tief und fest."
         val base = when (DayPhase.at(now, tz)) {

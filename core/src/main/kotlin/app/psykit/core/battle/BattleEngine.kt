@@ -508,6 +508,9 @@ object BattleEngine {
             }
             else -> attackWith(st, m, a.target, emp, rng)
         }
+        // Befund 12: Eine Aufladeattacke zählt genau einmal. Beim Beginn des Aufladens wird noch nichts gezählt,
+        // erst beim Auslösen (oben im Zweig „st.charging“).
+        if (st.charging != null) st.usedMove = null
         st.psi = st.psi.coerceIn(0f, st.maxPsi.toFloat() + st.bonuses.startPsi)
     }
 

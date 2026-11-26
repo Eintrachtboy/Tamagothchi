@@ -588,6 +588,8 @@ fun PetScreen(vm: PetViewModel) {
         confirmButton = { TextButton(onClick = { vm.setHasTail(true) }) { Text("Ja, hat einen") } },
         dismissButton = { TextButton(onClick = { vm.setHasTail(false) }) { Text("Nein, keinen") } },
     )
+    // Befund 28: Schlupf-Feier, einmal
+    if (!s.hatchSeen && !isEgg) HatchCelebration(s.name) { vm.markHatchSeen() }
     // Spielstand nicht lesbar: Pflege sperren, bis ausdrücklich entschieden wurde (Befund 21)
     if (saveLocked) RecoveryScreen(vm, onOtherPet = { showPets = true })
 }

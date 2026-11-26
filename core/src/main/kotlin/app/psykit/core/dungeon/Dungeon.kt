@@ -118,6 +118,9 @@ data class DungeonRun(
     val cleared: Boolean = false,
     /** Fundattacke für diesen Lauf (5. Platz). */
     val fundMove: String? = null,
+    /** Alle gewählten Fundattacken dieses Laufs (Befund 31) und davon eingesetzte. */
+    val foundMoves: List<String> = emptyList(),
+    val usedFoundMoves: List<String> = emptyList(),
     /** Drei Fundkarten zur Auswahl nach einem gewonnenen Kampf. */
     val cards: List<String> = emptyList(),
 )
@@ -134,6 +137,10 @@ data class RunReport(
     val moves: List<String> = emptyList(),
     val lost: List<String> = emptyList(),
     val text: String = "",
+    /** Fundattacken dieses Laufs in der Reihenfolge ihrer Wahl (Runde 12, Befund 31). */
+    val found: List<String> = emptyList(),
+    /** Davon tatsächlich eingesetzt. */
+    val used: List<String> = emptyList(),
 )
 
 /** Dungeon-Logik: Zustand rein, Zustand raus. */
@@ -315,6 +322,8 @@ object DungeonEngine {
         val b = run.battle ?: return ActionResult(p, "Kein Kampf.", false)
         val nb = BattleEngine.playRound(b, action)
         var r = run.copy(battle = nb, hp = nb.pet.hp, healPotions = nb.healPotions, psiPotions = nb.psiPotions)
+        // Befund 31: eingesetzte Fundattacke merken
+        nb.usedMove?.name?.takeIf { it in run.foundMoves && it !in run.usedFoundMoves }?.let { r = r.copy(usedFoundMoves = r.usedFoundMoves + it) }
         // Nach einem gewonnenen Kampf kurz verschnaufen
         if (nb.outcome == Outcome.WON) r = r.copy(hp = min(r.maxHp, r.hp + (r.maxHp * AFTER_FIGHT_HEAL).roundToInt()))
         var ns = p.copy(run = r)
@@ -445,7 +454,7 @@ object DungeonEngine {
         }
         val m = run.cards.getOrNull(index)?.let { MoveId.parse(it) } ?: return ActionResult(p, "", false)
         val note = if (run.fundMove != null) "${m.label} ersetzt ${MoveId.parse(run.fundMove)?.label ?: "die alte Fundattacke"}." else "Fundattacke für diesen Lauf: ${m.label}."
-        return ActionResult(p.copy(run = run.copy(cards = emptyList(), fundMove = m.name, note = note)), note, reaction = Reaction.JUMP)
+        return ActionResult(p.copy(run = run.copy(cards = emptyList(), fundMove = m.name, foundMoves = run.foundMoves + m.name, note = note)), note, reaction = Reaction.JUMP)
     }
 
     /** Kampf-Ergebnis gesehen, zurück zur Karte (nur fürs Anzeigen, Belohnung gibt es sofort). */
@@ -604,7 +613,7 @@ object DungeonEngine {
             if (lostNames.isNotEmpty()) append(" Verloren: ${lostNames.joinToString()}.")
             events.forEach { append(" $it") }
         }
-        val report = RunReport(run.floor, !lost, cleared, dust, run.exp, newItems.map { it.name }, moves, lostNames, msg.trim())
+        val report = RunReport(run.floor, !lost, cleared, dust, run.exp, newItems.map { it.name }, moves, lostNames, msg.trim(), run.foundMoves, run.usedFoundMoves)
         return ActionResult(leveled.copy(lastRun = report), msg.trim(), reaction = if (lost) Reaction.SLEEPY else Reaction.JUMP)
     }
 }

@@ -49,6 +49,9 @@ data class PetState(
     val scratchFoundDay: Long = -1,
     /** Runde 6: Mund-Markierung ausblenden, sobald Futter einmal am Mund gelandet ist. */
     val mouthSeen: Boolean = false,
+    /** Runde 12: gemerkte Fundattacken (⭐) und ob die Schlupf-Feier schon gesehen wurde (alte Stände: ja). */
+    val favoriteFinds: List<String> = emptyList(),
+    val hatchSeen: Boolean = true,
     // Heute schon probierte Kraulstellen (für Hinweise und die Anzeige)
     val scratchTriedDay: Long = -1,
     val scratchTried: List<Zone> = emptyList(),

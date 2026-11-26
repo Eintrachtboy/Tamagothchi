@@ -181,7 +181,8 @@ fun PetScene(
     showSign: Boolean = true,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
-    val dressed = wear?.takeIf { stage != Stage.EGG && !it.empty }
+    // Befund 29: Getragene Accessoires (Kopf, Augen) verschwinden beim Schlafen, Raumdeko bleibt
+    val dressed = wear?.let { if (sleeping) it.copy(head = null, eyes = null) else it }?.takeIf { stage != Stage.EGG && !it.empty }
     val anim = rememberInfiniteTransition(label = "idle")
     val bob by anim.animateFloat(
         0f, 1f, infiniteRepeatable(tween(if (sleeping) 2600 else 1400), RepeatMode.Reverse), label = "bob",

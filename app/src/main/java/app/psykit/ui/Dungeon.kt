@@ -119,7 +119,7 @@ fun DungeonDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () ->
                 Spacer(Modifier.height(6.dp))
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when {
-                        run == null && s.lastRun != null -> RunResultView(s, onOk = { vm.clearLastRun() })
+                        run == null && s.lastRun != null -> RunResultView(s, vm, onOk = { vm.clearLastRun() })
                         run == null -> FloorSelect(s, vm)
                         run.battle != null -> BattleView(vm, s, run.battle!!, sprite)
                         run.cards.isNotEmpty() -> CardView(vm, s, run)
@@ -421,7 +421,7 @@ private fun BridgeView(vm: PetViewModel, run: DungeonRun) {
 }
 
 @Composable
-private fun RunResultView(s: PetState, onOk: () -> Unit) {
+private fun RunResultView(s: PetState, vm: PetViewModel, onOk: () -> Unit) {
     val r = s.lastRun ?: return
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(if (!r.won) "💤" else if (r.cleared) "🏆" else "🎒", fontSize = 64.sp)
@@ -430,6 +430,21 @@ private fun RunResultView(s: PetState, onOk: () -> Unit) {
         r.items.mapNotNull { Item.parse(it) }.forEach { Text("${it.emoji} ${it.label} (${it.rarity.label}): ${it.bonusText}", style = MaterialTheme.typography.bodySmall) }
         r.moves.mapNotNull { MoveId.parse(it) }.forEach {
             Text(if (it.source is MoveSource.Hidden) "❓ Versteckte Attacke entdeckt: ${it.label}!" else "Neue Attacke: ${it.label}", fontWeight = FontWeight.Bold, color = if (it.source is MoveSource.Hidden) Gold else Color.Unspecified)
+        }
+        // Befund 31: Fundattacken dieses Laufs, mit ✓ wenn eingesetzt und ⭐ zum Merken
+        if (r.found.isNotEmpty()) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+            Column(Modifier.padding(12.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Fundattacken dieses Laufs", fontWeight = FontWeight.Bold)
+                r.found.mapNotNull { n -> MoveId.parse(n)?.let { n to it } }.forEach { (n, m) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            (if (n in r.used) "✓ " else "– ") + m.label + if (n in r.used) " (eingesetzt)" else " (nicht eingesetzt)",
+                            Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                        )
+                        TextButton(onClick = { vm.toggleFavoriteFind(n) }) { Text(if (n in s.favoriteFinds) "⭐" else "☆") }
+                    }
+                }
+            }
         }
         Button(onClick = onOk) { Text("OK") }
     }

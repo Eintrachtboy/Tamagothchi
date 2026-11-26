@@ -40,7 +40,7 @@ import kotlin.math.sin
 object SceneLandmarks {
     /** Höhle auf dem linken Hügel; Seitenverhältnis 200:160 wie die Vektorgrafik. */
     fun cave(w: Float, h: Float): Rect {
-        val cw = w * 0.28f
+        val cw = w * 0.32f
         val bottom = h * 0.71f
         return Rect(w * 0.03f, bottom - cw * 0.8f, w * 0.03f + cw, bottom)
     }
@@ -65,9 +65,9 @@ fun DrawScope.drawHills(night: Boolean) {
     drawOval(Brush.verticalGradient(listOf(midTop, midBottom), startY = h * 0.56f, endY = h * 0.86f),
         topLeft = Offset(w * 0.38f, h * 0.56f), size = Size(w * 0.85f, h * 0.30f))
     // kleine Bäume auf den Hügeln
-    drawTree(Offset(w * 0.38f, h * 0.665f), h * 0.115f, night)
-    drawTree(Offset(w * 0.47f, h * 0.675f), h * 0.08f, night)
-    drawTree(Offset(w * 0.91f, h * 0.60f), h * 0.105f, night)
+    drawTree(Offset(w * 0.41f, h * 0.665f), h * 0.14f, night)
+    drawTree(Offset(w * 0.50f, h * 0.675f), h * 0.095f, night)
+    drawTree(Offset(w * 0.91f, h * 0.60f), h * 0.125f, night)
 }
 
 private fun DrawScope.drawTree(base: Offset, height: Float, night: Boolean) {
@@ -99,20 +99,22 @@ fun DrawScope.drawDayDecor(sunColor: Color) {
 }
 
 private fun DrawScope.drawCloud(center: Offset, r: Float, alpha: Float = 0.95f) {
-    // Flauschige Wolke aus vielen Kreisen: erst die Schattenschicht, dann die weißen Wölkchen, dann Glanzlichter
+    // Runde, flauschige Wolke (Runde 10): Kuppel aus vier ähnlich großen Bällchen, breite flache Unterkante
     data class Puff(val dx: Float, val dy: Float, val rad: Float)
-    val puffs = listOf(
-        Puff(-1.9f, 0.25f, 0.75f), Puff(-1.3f, -0.15f, 0.95f), Puff(-0.6f, -0.55f, 1.1f),
-        Puff(0.2f, -0.85f, 1.25f), Puff(1.0f, -0.5f, 1.05f), Puff(1.65f, -0.05f, 0.9f),
-        Puff(2.1f, 0.3f, 0.7f), Puff(-0.9f, 0.35f, 0.9f), Puff(0.1f, 0.4f, 1.0f), Puff(1.1f, 0.35f, 0.9f),
+    val top = listOf(Puff(-1.35f, -0.15f, 0.85f), Puff(-0.55f, -0.55f, 1.0f), Puff(0.35f, -0.6f, 1.05f), Puff(1.2f, -0.25f, 0.9f))
+    val base = listOf(
+        Puff(-2.0f, 0.3f, 0.6f), Puff(-1.2f, 0.35f, 0.75f), Puff(-0.3f, 0.35f, 0.8f),
+        Puff(0.6f, 0.35f, 0.8f), Puff(1.45f, 0.35f, 0.75f), Puff(2.1f, 0.3f, 0.6f),
     )
+    val all = top + base
     val shade = Color(0xFFCFE1F3).copy(alpha = alpha)
     val body = Color.White.copy(alpha = alpha)
-    puffs.forEach { p -> drawCircle(shade, p.rad * r, Offset(center.x + p.dx * r, center.y + (p.dy + 0.18f) * r)) }
-    puffs.forEach { p -> drawCircle(body, p.rad * r, Offset(center.x + p.dx * r, center.y + p.dy * r)) }
-    // Glanzlichter oben links an den Wölkchen
-    puffs.filter { it.dy < 0f }.forEach { p ->
-        drawCircle(Color(0xFFF2F8FF).copy(alpha = alpha), p.rad * r * 0.55f, Offset(center.x + (p.dx - 0.15f) * r, center.y + (p.dy - 0.2f) * r))
+    all.forEach { p -> drawCircle(shade, p.rad * r, Offset(center.x + p.dx * r, center.y + (p.dy + 0.16f) * r)) }
+    all.forEach { p -> drawCircle(body, p.rad * r, Offset(center.x + p.dx * r, center.y + p.dy * r)) }
+    drawRoundRect(body, topLeft = Offset(center.x - 2.2f * r, center.y + 0.15f * r), size = Size(4.4f * r, 0.75f * r),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(0.375f * r))
+    top.forEach { p ->
+        drawCircle(Color(0xFFF4F9FF).copy(alpha = alpha), p.rad * r * 0.5f, Offset(center.x + (p.dx - 0.12f) * r, center.y + (p.dy - 0.18f) * r))
     }
 }
 
@@ -155,7 +157,8 @@ fun DrawScope.drawLandmarks(cave: Painter, sign: Painter, night: Boolean, showSi
     val c = SceneLandmarks.cave(w, h)
     translate(c.left, c.top) { with(cave) { draw(Size(c.width, c.height), colorFilter = filter) } }
     // „Dungeon“ leicht geschwungen über dem Berg
-    drawArchedText("Dungeon", c.center.x, c.top - h * 0.012f, c.width * 0.62f, h * 0.022f, h * 0.030f, night)
+    // Die Vektorgrafik hat oben ca. 20 % Luft über der Bergspitze; die Schrift sitzt direkt darüber
+    drawArchedText("Dungeon", c.center.x, c.top + c.height * 0.2f, c.width * 0.62f, h * 0.022f, h * 0.030f, night)
     if (showSign) {
         val s = SceneLandmarks.sign(w, h)
         translate(s.left, s.top) { with(sign) { draw(Size(s.width, s.height), colorFilter = filter) } }
@@ -192,11 +195,13 @@ private fun DrawScope.drawArchedText(text: String, cx: Float, baseY: Float, half
         moveTo(cx - halfWidth, baseY)
         quadTo(cx, baseY - arch * 2f, cx + halfWidth, baseY)
     }
-    // Der Text ist mittig ausgerichtet; hOffset = halbe Pfadlänge setzt ihn in die Mitte des Bogens
-    val mid = android.graphics.PathMeasure(path, false).length / 2f
+    // Links ausgerichtet und um (Pfadlänge − Textbreite) / 2 verschoben: steht so genau mittig auf dem Bogen
+    val strokePaint = textPaint(sizePx, false, 0, edge).apply { textAlign = android.graphics.Paint.Align.LEFT }
+    val fillPaint = textPaint(sizePx, true, fill).apply { textAlign = android.graphics.Paint.Align.LEFT }
+    val start = ((android.graphics.PathMeasure(path, false).length - fillPaint.measureText(text)) / 2f).coerceAtLeast(0f)
     drawIntoCanvas { c ->
-        c.nativeCanvas.drawTextOnPath(text, path, mid, 0f, textPaint(sizePx, false, 0, edge))
-        c.nativeCanvas.drawTextOnPath(text, path, mid, 0f, textPaint(sizePx, true, fill))
+        c.nativeCanvas.drawTextOnPath(text, path, start, 0f, strokePaint)
+        c.nativeCanvas.drawTextOnPath(text, path, start, 0f, fillPaint)
     }
 }
 

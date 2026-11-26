@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
+import app.psykit.core.engine.PetEngine
 import app.psykit.core.model.GameKind
 import app.psykit.core.model.GameTuning
 import app.psykit.core.model.Difficulty
@@ -100,6 +101,8 @@ fun GameDialog(
     var phase by remember { mutableStateOf(0) }
     var round by remember { mutableStateOf(0) }
     val firstTime = remember { kind.name !in s.gamesIntroSeen }
+    // Befund 34: „Zeig's mir“ läuft beim ersten Mal von selbst und lässt sich danach per Knopf zeigen
+    var showDemo by remember { mutableStateOf(firstTime) }
     // Befund 19: Steuerung für Beerenfang, „Ziehen“ vorausgewählt, Wahl wird gemerkt
     val gamePrefs = LocalContext.current.getSharedPreferences("psykit", Context.MODE_PRIVATE)
     var berriesTilt by remember { mutableStateOf(gamePrefs.getBoolean("berries_tilt", false)) }
@@ -121,12 +124,13 @@ fun GameDialog(
                     val r = result
                     if (phase == 0) {
                         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                            PetIcon(sprite, s.stage, Mood.HAPPY, 120.dp)
+                            if (showDemo) GameDemo(kind, Modifier.padding(horizontal = 8.dp)) else PetIcon(sprite, s.stage, Mood.HAPPY, 120.dp)
                             Spacer(Modifier.height(12.dp))
                             if (firstTime) Text("Neu für ${s.name}!", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             Text(gameInfo(kind), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
                             Spacer(Modifier.height(6.dp))
-                            Text("Zeit und Wertung starten erst mit „Spielen“.", style = MaterialTheme.typography.bodySmall)
+                            Text("Zeit und Wertung starten erst mit „Spielen“. Kostet ⚡ ${PetEngine.GAME_ENERGY.toInt()}.", style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = { showDemo = !showDemo }) { Text(if (showDemo) "Zeig's mir ausblenden" else "👀 Zeig's mir") }
                             if (kind != GameKind.VISIT) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                                 Difficulty.entries.forEach { d ->
                                     androidx.compose.material3.FilterChip(

@@ -261,6 +261,9 @@ object PetEngine {
     }
 
     /** K1 (vorläufige Werte): Kraulen bringt nur mit Abstand und bis zu einer Tagesgrenze Freude. */
+    /** Befund 32: Energie je Spielrunde und Mindestenergie zum Spielen. */
+    const val GAME_ENERGY = 5f
+    const val GAME_MIN_ENERGY = 10f
     const val SCRATCH_COOLDOWN_MS = 10_000L
     const val SCRATCH_REWARDS_PER_DAY = 20
 
@@ -360,7 +363,7 @@ object PetEngine {
     fun canPlay(s: PetState): ActionResult? {
         blocked(s)?.let { return it }
         if (s.sluggish) return ActionResult(s, "${s.name} ist von den Süßigkeiten noch zu träge zum Spielen.", false, Reaction.SLEEPY)
-        if (s.energy < 15f) return ActionResult(s, "${s.name} ist zu müde zum Spielen.", false, Reaction.SLEEPY)
+        if (s.energy < GAME_MIN_ENERGY) return ActionResult(s, "${s.name} ist zu müde zum Spielen.", false, Reaction.SLEEPY)
         if (s.satiety < 10f) return ActionResult(s, "${s.name} hat zu großen Hunger zum Spielen.", false)
         return null
     }
@@ -371,7 +374,7 @@ object PetEngine {
         val ratio = if (max <= 0) 0f else (score.toFloat() / max).coerceIn(0f, 1f)
         val train = when { ratio >= 0.99f -> 2; ratio >= 0.5f -> 1; else -> 0 }
         var ns = kind(s, 1f).copy(
-            energy = s.energy - 10f,
+            energy = s.energy - GAME_ENERGY,
             satiety = s.satiety - 5f,
             happiness = s.happiness + 5f + 10f * ratio,
             gamesWon = if (ratio >= 0.5f) s.gamesWon + 1 else s.gamesWon,

@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -172,6 +173,8 @@ fun PetScene(
     wear: Wearables? = null,
     /** Schon berechneter Umriss der Figur (damit Szene und Trefferprüfung denselben verwenden). */
     footprintIn: Footprint? = null,
+    /** Feste Höhe; null = so hoch wie der Platz, den der Aufrufer gibt (Zuhause, Befund 35). */
+    sceneHeight: androidx.compose.ui.unit.Dp? = 340.dp,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val dressed = wear?.takeIf { stage != Stage.EGG && !it.empty }
@@ -223,7 +226,7 @@ fun PetScene(
     Box(
         modifier
             .fillMaxWidth()
-            .height(340.dp)
+            .then(if (sceneHeight != null) Modifier.height(sceneHeight) else Modifier.fillMaxHeight())
             .clip(RoundedCornerShape(28.dp))
             .background(Brush.verticalGradient(skyColors(phase)))
             .then(interaction),

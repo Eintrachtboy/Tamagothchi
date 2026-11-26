@@ -7,6 +7,10 @@ import app.psykit.core.battle.EnemyKind
 import app.psykit.core.battle.EnemySpec
 import app.psykit.core.battle.FloorRule
 import app.psykit.core.battle.MoveId
+import app.psykit.core.battle.MoveSource
+import app.psykit.core.battle.BossKind
+import app.psykit.core.dungeon.World
+import app.psykit.core.model.Stage
 import app.psykit.core.battle.Outcome
 import app.psykit.core.dungeon.DungeonEngine
 import app.psykit.core.dungeon.Floors
@@ -91,6 +95,68 @@ class BalanceSimulation {
         val f = File("build/balance-report.md")
         f.parentFile.mkdirs()
         f.writeText(out.toString())
+        println(out)
+    }
+
+    /** Was man auf Ebene [floorIndex] realistisch haben kann: Stufen-Attacken, Laden (Preis passend zur Welt),
+     *  Boss-Beute früherer Welten, versteckte Attacken früherer Ebenen. Kein Training. */
+    private fun available(floorIndex: Int): List<MoveId> {
+        val f = Floors.all[floorIndex]
+        val stage = when { f.level >= 30 -> Stage.ADULT; f.level >= 18 -> Stage.TEEN; f.level >= 8 -> Stage.CHILD; else -> Stage.BABY }
+        val drops = mapOf(BossKind.MORLA to MoveId.SPORES, BossKind.KLIRR to MoveId.BLIZZARD, BossKind.FURNACE to MoveId.EMBER_BREATH, BossKind.NIGHTMARE to MoveId.NIGHTMARE_GAZE)
+        val beaten = World.entries.filter { it.n < f.world }.mapNotNull { drops[it.boss] }
+        return MoveId.entries.filter { m ->
+            when (val src = m.source) {
+                is MoveSource.FromStage -> stage.ordinal >= src.stage.ordinal
+                is MoveSource.Shop -> src.price <= 150 + 100 * f.world
+                is MoveSource.Hidden -> src.floor < floorIndex
+                is MoveSource.Drop -> m in beaten
+                else -> false
+            }
+        }
+    }
+
+    @Test fun simulateRealistic() {
+        if (System.getenv("BALANCE") != "1") return
+        val out = StringBuilder("# Balance-Simulation mit erreichbaren Attacken\n\n")
+        out.append("Je Ebene: Tierchen auf Ebenen-Level, je Typ die bis dahin erreichbaren 3 stärksten Attacken dieses Typs + Ducken. ")
+        out.append("Erreichbar = Stufe, Laden bis Preis 150 + 100 × Welt, Boss-Beute früherer Welten, versteckte Attacken früherer Ebenen; kein Training. ")
+        out.append("$seeds Kämpfe je Feld, Kampfraum bzw. Boss. Wert = Siegquote %, „–“ = Typ dort noch nicht erreichbar.\n\n")
+        val types = AttackType.entries
+        out.append("| Ebene | Lv | " + types.joinToString(" | ") { "${it.emoji} ${it.label}" } + " | 🎲 Beste Mischung |\n|---|---|" + types.joinToString("") { "---|" } + "---|\n")
+        val sets = StringBuilder("\n## Verwendete Sets je Welt\n\n")
+        for (f in Floors.all.filter { !it.isDepth }) {
+            val av = available(f.index)
+            val cells = types.map { t ->
+                val own = av.filter { it.type == t }.sortedByDescending { it.power * it.hits }.take(3)
+                if (own.isEmpty()) "–" else {
+                    val moves = own + MoveId.DUCK
+                    val res = (0 until seeds).map {
+                        val rng = Random(21_000L + it * 13L + f.index)
+                        val specs = DungeonEngine.encounter(f, if (f.isBoss) RoomType.BOSS else RoomType.FIGHT, rng)
+                        fight(moves, f.level, specs, f.world, rng.nextLong())
+                    }
+                    "${res.count { it.won } * 100 / res.size}"
+                }
+            }
+            // Mischung: je stärkste Attacke der 3 verbreitetsten Schwächen-Typen
+            val mixed = av.filter { it.type != null }.groupBy { it.type }.values.map { g -> g.maxBy { it.power * it.hits } }
+                .sortedByDescending { it.power * it.hits }.take(3) + MoveId.DUCK
+            val mixRes = (0 until seeds).map {
+                val rng = Random(21_000L + it * 13L + f.index)
+                val specs = DungeonEngine.encounter(f, if (f.isBoss) RoomType.BOSS else RoomType.FIGHT, rng)
+                fight(mixed, f.level, specs, f.world, rng.nextLong())
+            }
+            out.append("| ${f.code} ${f.name} | ${f.level} | ${cells.joinToString(" | ")} | ${mixRes.count { it.won } * 100 / mixRes.size} |\n")
+            if (f.sub == 1) sets.append("- Welt ${f.world}: " + types.joinToString("; ") { t ->
+                "${t.emoji} " + av.filter { it.type == t }.sortedByDescending { it.power * it.hits }.take(3).joinToString { it.label }.ifEmpty { "–" }
+            } + "\n")
+        }
+        out.append(sets)
+        out.append("\nHinweis: einfache Spiel-KI aus DungeonTest.choose, ohne Tränke, ohne Training, Regeln der Ebenen ausgeschaltet.\n")
+        val file = File("build/balance-realistic.md")
+        file.parentFile.mkdirs()
+        file.writeText(out.toString())
         println(out)
     }
 }

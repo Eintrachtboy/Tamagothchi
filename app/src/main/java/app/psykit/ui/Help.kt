@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
@@ -56,6 +57,9 @@ Technische Regeln für JEDES Bild:
 - Figur mittig, füllt etwa 80 % der Bildhöhe, steht mit den Füßen knapp über dem unteren Rand
 - kein Text, keine Schrift, kein Rahmen, kein Bodenschatten
 - alle Bilder einer Stufe gleich groß und gleich positioniert, damit der Wechsel zwischen den Launen nicht springt
+- Kopf, Gesicht, Mund und Schwanz in allen 6 Bildern einer Stufe an genau derselben Stelle (die App legt Streichel- und Fütterzonen je Stufe fest, nicht je Laune)
+- Gesicht und Mund klar erkennbar und nicht von Händen, Haaren oder Gegenständen verdeckt
+- Schwanz (oder mehrere Schwänze) deutlich sichtbar und vom Körper abgesetzt; hat die Figur keinen Schwanz, zeichne auch keinen
 
 Pack zum Schluss alles in eine ZIP-Datei namens [Paketname].zip, ohne Unterordner, mit genau diesen Dateinamen und zusätzlich einer Datei pack.json mit diesem Inhalt:
 {"name": "[Paketname]", "petName": "[Name des Tierchens]", "float": [true wenn die Figur schweben soll, sonst false]}
@@ -69,7 +73,7 @@ fun HelpDialog(onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Column(
-                Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(16.dp),
+                Modifier.fillMaxSize().safeDrawingPadding().navigationBarsPadding().verticalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 48.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Row {
@@ -79,7 +83,7 @@ fun HelpDialog(onDismiss: () -> Unit) {
 
                 H("So funktionieren Figuren-Pakete")
                 P("Ein Figuren-Paket ist eine einzige ZIP-Datei mit allen Bildern einer Figur. Du kannst beliebig viele Pakete importieren und jederzeit wechseln, zum Beispiel heute Mew, morgen ein Graufuchs. Level, Werte und Fortschritt deines Tierchens bleiben beim Wechsel gleich, nur das Aussehen (und wenn im Paket angegeben, der Name) ändert sich.")
-                P("Zahnrad → Figuren-Pakete → „Paket importieren (ZIP)“ → Datei wählen. Danach in der Liste „Benutzen“ tippen. Deine bisherigen Einzelbilder werden beim ersten Wechsel automatisch als Paket „Meine Bilder“ gesichert.")
+                P("Zahnrad → Einstellungen → Figuren-Pakete → „Paket importieren (ZIP)“ → Datei wählen. Danach in der Liste „Benutzen“ tippen. Deine bisherigen Einzelbilder werden beim ersten Wechsel automatisch als Paket „Meine Bilder“ gesichert.")
 
                 H("Inhalt der ZIP-Datei")
                 Mono(
@@ -108,6 +112,9 @@ fun HelpDialog(onDismiss: () -> Unit) {
                 MoodLine("_hungry (hungrig)", "leckt sich die Lippen, hält sich den Bauch, schaut bettelnd. Wenn die Sattheit niedrig ist.")
                 MoodLine("_sick (krank)", "blass oder leicht grünlich, müde Augen, evtl. Pflaster. Wenn die Gesundheit niedrig ist.")
                 MoodLine("_sleeping (schläft)", "Augen zu, eingerollt oder liegend. „Zzz“ und Dunkelheit zeichnet die App selbst dazu.")
+
+                H("Streicheln, Füttern und Kraulen")
+                P("Die App erkennt aus dem Umriss selbst, wo Kopf, Mund und Schwanz sind. Sitzt etwas nicht richtig, stellst du es im Sammelbuch unter „📐 Sitz“ je Stufe nach: Hut und Brille, Mund, Schwanz und Körperbreite. Damit das für alle Launen einer Stufe passt, müssen Kopf, Mund und Schwanz dort in jedem Bild an derselben Stelle liegen. Hat die Figur keinen Schwanz, fragt die App beim Import danach.")
 
                 H("So machst du gute Bilder")
                 P("• Format: WebP mit echtem transparentem Hintergrund (Alpha-Kanal). Weiß oder ein gemaltes Schachbrettmuster sieht in der App wie ein Kasten aus.\n" +

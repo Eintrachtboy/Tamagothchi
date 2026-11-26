@@ -223,7 +223,9 @@ fun PetScreen(vm: PetViewModel) {
         s.poops > 0 -> 2
         else -> -1
     }
-    LaunchedEffect(suggestedTool, cleanSession) { if (suggestedTool >= 0) tool = suggestedTool }
+    // Das Werkzeug wechselt erst, wenn der Finger abgehoben ist. Sonst würde die Dusche mitten im Wischen aktiv
+    // und spült den frischen Schaum sofort weg (zu großzügiges Wischen).
+    LaunchedEffect(suggestedTool, cleanSession, toolPos == null) { if (suggestedTool >= 0 && toolPos == null) tool = suggestedTool }
     val cleanNextStep = when {
         cleanTickNow < 0 -> ""
         spotCount == 0 && s.poops == 0 -> "${s.name} ist schon sauber."

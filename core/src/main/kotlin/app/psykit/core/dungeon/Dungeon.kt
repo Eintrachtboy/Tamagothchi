@@ -152,10 +152,10 @@ object DungeonEngine {
     const val KEY_STEPS = 3000L
     const val MAX_KEYS = 3
     const val KEY_PRICE = 100
-    const val ENTRY_ENERGY = 20f
-    const val MIN_ENERGY_TO_ENTER = 30f
+    const val ENTRY_ENERGY = 10f
+    const val MIN_ENERGY_TO_ENTER = 20f
     const val ENTRY_SATIETY = 10f
-    const val ROOM_ENERGY = 3f
+    const val ROOM_ENERGY = 2f
     const val END_HYGIENE = 15f
     const val AFTER_FIGHT_HEAL = 0.15
 

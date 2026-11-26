@@ -50,6 +50,10 @@ data class PetState(
     // Heute schon probierte Kraulstellen (für Hinweise und die Anzeige)
     val scratchTriedDay: Long = -1,
     val scratchTried: List<Zone> = emptyList(),
+    // Kraulgrenze (K1): belohnte Kraulvorgänge heute und Zeitpunkt des letzten
+    val scratchRewardDay: Long = -1,
+    val scratchRewardsToday: Int = 0,
+    val lastScratchRewardAt: Long = 0,
     // Schmutz durch Spaziergänge
     val walkSteps: Long = 0,
     val dirt: Int = 0,

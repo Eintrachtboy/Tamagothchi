@@ -260,7 +260,7 @@ private fun roomInfo(t: RoomType) = when (t) {
     RoomType.ELITE -> "Schwerer Kampf mit einem Elite-Gegner, doppelte Belohnung."
     RoomType.CHEST -> "Sternenstaub und ein Fundstück."
     RoomType.EVENT -> "Etwas Unerwartetes passiert."
-    RoomType.REST -> "Ausruhen (30 % KP) oder Attacken tauschen."
+    RoomType.REST -> "Ausruhen (${DungeonEngine.REST_HEAL_PERCENT} % KP) oder Attacken tauschen."
     RoomType.MERCHANT -> "Tränke mit deinem Sternenstaub kaufen."
     RoomType.GUARD -> "Der Wächter dieser Ebene. Danach ist sie geschafft."
     RoomType.BOSS -> "Der Boss dieser Welt!"
@@ -317,7 +317,7 @@ private fun RestView(vm: PetViewModel, s: PetState, run: DungeonRun) {
         if (editing) {
             MovesEditor(s, onSave = { vm.setMoves(it); vm.rest(false) })
         } else {
-            Button(onClick = { vm.rest(true) }, modifier = Modifier.fillMaxWidth()) { Text("Ausruhen: +30 % KP") }
+            Button(onClick = { vm.rest(true) }, modifier = Modifier.fillMaxWidth()) { Text("Ausruhen: +${DungeonEngine.REST_HEAL_PERCENT} % KP") }
             OutlinedButton(onClick = { editing = true }, modifier = Modifier.fillMaxWidth()) { Text("Attacken tauschen") }
         }
     }
@@ -522,10 +522,16 @@ private fun BattleView(vm: PetViewModel, s: PetState, st: BattleState, sprite: S
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
+        // Befund 11: Während des Aufladens löst jeder Zug die gespeicherte Attacke aus; Tränke wären wirkungslos.
+        val charging = st.charging != null
+        if (charging) Text(
+            "Aufgeladen: Der nächste Zug löst ${st.charging!!.label} aus. Tränke gehen erst danach wieder.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { vm.battle(PetAction(potion = Potion.HEAL)) }, enabled = st.healPotions > 0, modifier = Modifier.weight(1f)) { Text("🧪 ${st.healPotions}") }
-            OutlinedButton(onClick = { vm.battle(PetAction(potion = Potion.PSI)) }, enabled = st.psiPotions > 0, modifier = Modifier.weight(1f)) { Text("💜 ${st.psiPotions}") }
-            OutlinedButton(onClick = { vm.battle(PetAction()) }, modifier = Modifier.weight(1f)) { Text("Abwarten") }
+            OutlinedButton(onClick = { vm.battle(PetAction(potion = Potion.HEAL)) }, enabled = !charging && st.healPotions > 0, modifier = Modifier.weight(1f)) { Text("🧪 ${st.healPotions}") }
+            OutlinedButton(onClick = { vm.battle(PetAction(potion = Potion.PSI)) }, enabled = !charging && st.psiPotions > 0, modifier = Modifier.weight(1f)) { Text("💜 ${st.psiPotions}") }
+            OutlinedButton(onClick = { vm.battle(PetAction()) }, modifier = Modifier.weight(1f)) { Text(if (charging) "Auslösen" else "Abwarten") }
         }
     }
 }

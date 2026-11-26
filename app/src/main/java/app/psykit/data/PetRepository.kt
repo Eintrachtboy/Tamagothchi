@@ -113,6 +113,28 @@ class PetRepository private constructor(context: Context) {
         save(id, block(PetEngine.advance(s, System.currentTimeMillis(), zone)))
     }
 
+    /**
+     * Besuch abrechnen (Befund 08): aktives Tierchen und Besuchstier werden gemeinsam
+     * in einem Schreibvorgang gespeichert, genau einmal. Ist das Besuchstier nicht lesbar,
+     * bekommt nur das aktive Tierchen seine Belohnung.
+     */
+    fun <T> updateWithPartner(
+        partnerId: String,
+        partner: (PetState) -> PetState,
+        current: (PetState, Long) -> Pair<PetState, T>,
+    ): T = synchronized(lock) {
+        val now = System.currentTimeMillis()
+        val (next, result) = current(PetEngine.advance(_state.value, now, zone), now)
+        val other = if (partnerId != _currentId.value && partnerId !in locked) readOk(partnerId) else null
+        val writes = buildMap {
+            if (_currentId.value !in locked) put(_currentId.value, next)
+            if (other != null && partnerId !in locked) put(partnerId, partner(PetEngine.advance(other, now, zone)))
+        }
+        if (writes.isNotEmpty()) store.writeAll(writes)
+        _state.value = next
+        result
+    }
+
     /** Neues Tierchen (Ei) anlegen und dorthin wechseln. */
     fun addPet(name: String): String = synchronized(lock) {
         addPetWith(PetState.newEgg(System.currentTimeMillis(), name.ifBlank { "Lumi" }))

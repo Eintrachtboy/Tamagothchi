@@ -294,7 +294,7 @@ fun GardenPanel(s: PetState, vm: PetViewModel, seed: Berry, onSeed: (Berry) -> U
         FilterChip(selected = fertilizeMode, onClick = { onFertilizeMode(!fertilizeMode) }, enabled = s.fertilizer > 0 || fertilizeMode, label = { Text("🧪 Düngen (${s.fertilizer})") })
         Text("Kompost ${s.compost}/${GardenEngine.COMPOST_PER_FERTILIZER} Häufchen", style = MaterialTheme.typography.labelMedium)
     }
-    if (fertilizeMode) Text("Tipp jetzt eine wachsende Pflanze an: Sie wächst 50 % schneller.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+    if (fertilizeMode) Text("Tipp jetzt eine wachsende Pflanze an: Sie wächst ${GardenEngine.fertilizerPercent} % schneller.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
 
     // Überblick über jedes Beet
     GardenEngine.beds(s).forEachIndexed { i, p ->
@@ -312,7 +312,7 @@ fun GardenPanel(s: PetState, vm: PetViewModel, seed: Berry, onSeed: (Berry) -> U
         }
         if (p.weedSince > 0) parts += "Unkraut (−25 %)"
         if (p.snailSince > 0) parts += "🐌 Schnecke!"
-        if (p.fertilized && GardenEngine.growing(st)) parts += "gedüngt (+50 %)"
+        if (p.fertilized && GardenEngine.growing(st)) parts += "gedüngt (+${GardenEngine.fertilizerPercent} %)"
         Text("Beet ${i + 1}: ${parts.joinToString(" · ")}", style = MaterialTheme.typography.bodySmall)
     }
 

@@ -77,6 +77,10 @@ import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /** Vollbild-Dialog für alle Minispiele. onFinish(score, max, bonusExp). */
+
+/** Befund 02: eine Rundendauer für Hilfetext, Countdown und Schwierigkeitsverlauf der Seifenblasen. */
+const val BUBBLES_SECONDS = 30
+
 @Composable
 fun GameDialog(
     kind: GameKind,
@@ -332,7 +336,7 @@ private fun BubblesGame(onDone: (Int, Int, Int) -> Unit) {
     val max = 35
     val bubbles = remember { ArrayList<Bubble>() }
     var popped by remember { mutableIntStateOf(0) }
-    var timeLeft by remember { mutableFloatStateOf(30f) }
+    var timeLeft by remember { mutableFloatStateOf(BUBBLES_SECONDS.toFloat()) }
     var frame by remember { mutableLongStateOf(0L) }
     var area by remember { mutableStateOf(androidx.compose.ui.geometry.Size.Zero) }
     val pops = remember { ArrayList<Pair<Offset, Long>>() }
@@ -347,9 +351,9 @@ private fun BubblesGame(onDone: (Int, Int, Int) -> Unit) {
                 if (area.width > 0f) {
                     spawn -= dt
                     if (spawn <= 0f) {
-                        spawn = (0.6f - (30f - timeLeft) * 0.012f).coerceAtLeast(0.3f) + Random.nextFloat() * 0.2f
+                        spawn = (0.6f - (BUBBLES_SECONDS - timeLeft) * 0.012f).coerceAtLeast(0.3f) + Random.nextFloat() * 0.2f
                         val r = area.width * (0.045f + Random.nextFloat() * 0.035f)
-                        bubbles += Bubble(r + Random.nextFloat() * (area.width - 2 * r), area.height + r, r, area.height * (0.3f + (30f - timeLeft) * 0.008f + Random.nextFloat() * 0.25f), Random.nextFloat() * 6f)
+                        bubbles += Bubble(r + Random.nextFloat() * (area.width - 2 * r), area.height + r, r, area.height * (0.3f + (BUBBLES_SECONDS - timeLeft) * 0.008f + Random.nextFloat() * 0.25f), Random.nextFloat() * 6f)
                     }
                     bubbles.forEach { it.y -= it.v * dt }
                     bubbles.removeAll { it.y < -it.r }

@@ -111,9 +111,13 @@ class PetEngineTest {
         val first = PetEngine.scratch(s, wrong[0], at(12), zone)
         assertEquals(listOf(wrong[0]), first.state.scratchTried)
         assertTrue(first.message.contains(wrong[0].hintTowards(fav)))
-        var st = first.state
-        for (z in wrong.take(3).drop(1)) st = PetEngine.scratch(st, z, at(12), zone).state
-        val third = PetEngine.scratch(st, wrong[2], at(12), zone)
+        // K4: nach 2 Fehlversuchen noch keine Auflösung, derselbe Fehlversuch zählt nicht doppelt
+        val second = PetEngine.scratch(first.state, wrong[1], at(12), zone)
+        assertFalse(second.message.contains("heute ist es"))
+        val again = PetEngine.scratch(second.state, wrong[1], at(12), zone)
+        assertFalse(again.message.contains("heute ist es"))
+        assertEquals(2, again.state.scratchTried.size)
+        val third = PetEngine.scratch(again.state, wrong[2], at(12), zone)
         assertTrue(third.message.contains("heute ist es: ${fav.label}"))
         // Treffer zählt für die Tagesaufgabe, falls sie heute dran ist
         val hit = PetEngine.track(PetEngine.scratch(third.state, fav, at(12), zone), Quest.SCRATCH)
@@ -121,6 +125,41 @@ class PetEngineTest {
         if (Quest.SCRATCH in PetEngine.quests(hit.state)) assertTrue(PetEngine.questDone(hit.state, Quest.SCRATCH))
         // am nächsten Tag ist die Liste wieder leer
         assertTrue(PetEngine.scratchTriedToday(hit.state, at(12, day = 2), zone).isEmpty())
+    }
+
+    @Test fun scratchingHasCooldownAndDailyLimit() {
+        // K1 (vorläufige Werte): Abstand zwischen belohnten Kraulvorgängen und Tagesgrenze
+        var s = PetEngine.advance(hatched(at(10)), at(12), zone).copy(happiness = 10f)
+        val fav = Zone.favoriteOn(PetEngine.epochDay(at(12), zone), s.bornAt)
+        val wrong = Zone.entries.first { it != fav }
+        val r1 = PetEngine.scratch(s, wrong, at(12), zone)
+        assertTrue(r1.state.happiness > s.happiness)
+        val r2 = PetEngine.scratch(r1.state, wrong, at(12) + 1_000, zone)
+        assertEquals(r1.state.happiness, r2.state.happiness, "innerhalb der Abklingzeit keine Freude")
+        // Fund der Lieblingsstelle zählt trotz Abklingzeit
+        val hit = PetEngine.scratch(r2.state, fav, at(12) + 2_000, zone)
+        assertEquals(Reaction.JUMP, hit.reaction)
+        // Tagesgrenze
+        s = hit.state.copy(happiness = 10f)
+        var t = at(12) + 2_000
+        repeat(PetEngine.SCRATCH_REWARDS_PER_DAY + 5) {
+            t += PetEngine.SCRATCH_COOLDOWN_MS
+            s = PetEngine.scratch(s, fav, t, zone).state
+        }
+        assertTrue(s.scratchRewardsToday <= PetEngine.SCRATCH_REWARDS_PER_DAY)
+        val capped = s.happiness
+        s = PetEngine.scratch(s, fav, t + PetEngine.SCRATCH_COOLDOWN_MS, zone).state
+        assertEquals(capped, s.happiness, "über der Tagesgrenze keine Freude")
+        // am nächsten Tag wieder
+        val next = PetEngine.scratch(s, fav, at(12, day = 2), zone)
+        assertTrue(next.state.scratchRewardsToday <= 1)
+    }
+
+    @Test fun stepRulesComeFromOneDefinition() {
+        // Befund 03
+        val s = hatched(at(12)).copy(pendingSteps = PetEngine.STEPS_PER_EXP * 3 + 7)
+        val r = PetEngine.redeemSteps(s)
+        assertEquals(7L, r.state.pendingSteps)
     }
 
     @Test fun hintsPointTheRightWay() {

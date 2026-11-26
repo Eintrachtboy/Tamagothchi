@@ -126,8 +126,20 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Gibt null zurück, wenn gespielt werden darf, sonst den Grund. */
     fun checkPlay(): String? = PetEngine.canPlay(state.value)?.message?.also { _message.value = it }
-    fun finishGame(kind: GameKind, score: Int, max: Int, bonusExp: Int = 0) =
-        act { s, _ -> PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp), Quest.PLAY) }
+    fun finishGame(kind: GameKind, score: Int, max: Int, bonusExp: Int = 0) {
+        val visit = pendingVisit.takeIf { kind == GameKind.VISIT }
+        pendingVisit = null
+        if (visit == null) {
+            act { s, _ -> PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp), Quest.PLAY) }
+            return
+        }
+        // Befund 08: beide Gutschriften gemeinsam und genau einmal
+        val r = repo.updateWithPartner(visit.first, { PetEngine.visited(it, visit.second) }) { s, _ ->
+            PetEngine.track(PetEngine.gameResult(s, kind, score, max, bonusExp), Quest.PLAY).let { it.state to it }
+        }
+        _message.value = r.message
+        if (r.reaction != Reaction.NONE) _reaction.value = ReactionEvent(_reaction.value.id + 1, r.reaction)
+    }
     fun todaysGame(): GameKind = GameKind.dailyOn(PetEngine.epochDay(System.currentTimeMillis(), repo.zone))
 
     fun rename(name: String) = repo.update { s, _ -> PetEngine.rename(s, name) to Unit }
@@ -253,7 +265,9 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     val currentPetId: StateFlow<String> = repo.currentId
 
     fun allPets() = repo.allPets()
-    fun visitedBy(partnerId: String, ratio: Float) = repo.updatePet(partnerId) { PetEngine.visited(it, ratio) }
+    /** Besuch vormerken; gebucht wird erst zusammen mit der eigenen Belohnung in [finishGame] (Befund 08). */
+    private var pendingVisit: Pair<String, Float>? = null
+    fun visitedBy(partnerId: String, ratio: Float) { pendingVisit = partnerId to ratio }
     fun spritesFor(id: String) = if (id == sprites.petId) sprites else SpriteStore(getApplication(), id)
 
     private val _floating = MutableStateFlow(packs.floating)

@@ -127,12 +127,21 @@ fun PetScreen(vm: PetViewModel) {
         stepPermission = vm.stepSensor.hasPermission()
         if (stepPermission) vm.startSteps()
     }
+    fun notificationsGranted() = Build.VERSION.SDK_INT < 33 ||
+        ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    var notifyPermission by remember { mutableStateOf(notificationsGranted()) }
+    val notifyLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { notifyPermission = notificationsGranted() }
+    /** Erster Start: beide Freigaben einmal anfragen. */
     fun requestPermissions() {
         val perms = buildList {
             if (Build.VERSION.SDK_INT >= 29) add(Manifest.permission.ACTIVITY_RECOGNITION)
             if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
         }
         if (perms.isNotEmpty()) permLauncher.launch(perms.toTypedArray())
+    }
+    /** Befund 01: Die Schritt-Schaltfläche fragt nur nach Schritten. */
+    fun requestStepPermission() {
+        if (Build.VERSION.SDK_INT >= 29) permLauncher.launch(arrayOf(Manifest.permission.ACTIVITY_RECOGNITION))
     }
     LaunchedEffect(Unit) {
         vm.greet()
@@ -461,9 +470,14 @@ fun PetScreen(vm: PetViewModel) {
                 permission = stepPermission,
                 stepsToday = stepsToday,
                 pending = s.pendingSteps,
-                onAllow = { requestPermissions() },
+                onAllow = { requestStepPermission() },
                 onRedeem = vm::redeemSteps,
             )
+            // Befund 01: Pflege-Erinnerungen getrennt von den Schritten freigeben
+            if (!notifyPermission && Build.VERSION.SDK_INT >= 33) OutlinedButton(
+                onClick = { notifyLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("🔔 Pflege-Erinnerungen erlauben") }
             Spacer(Modifier.height(8.dp))
         }
 
@@ -497,7 +511,7 @@ fun PetScreen(vm: PetViewModel) {
 private fun gameInfo(k: GameKind) = when (k) {
     GameKind.HIDE_SEEK -> "Dein Tierchen versteckt sich hinter einer von drei Wolken. Die Wolken mischen sich, du findest es."
     GameKind.MEMORY -> "Dreh Karten um und finde die passenden Psi-Symbole."
-    GameKind.BUBBLES -> "Bring in 30 Sekunden so viele Seifenblasen wie möglich zum Platzen."
+    GameKind.BUBBLES -> "Bring in ${BUBBLES_SECONDS} Sekunden so viele Seifenblasen wie möglich zum Platzen."
     GameKind.BERRIES -> "Kipp dein Handy, damit dein Tierchen die fallenden Beeren fängt. Goldene Beeren geben Extra-EP."
     GameKind.REACTION -> "Tippe so schnell wie möglich, wenn dein Tierchen lila aufleuchtet. Bei rotem Leuchten nicht tippen!"
     GameKind.ECHO -> "Merk dir die Farbfolge und spiel sie nach. Jede Runde wird sie länger."
@@ -743,13 +757,13 @@ private fun StepsCard(
             when {
                 !available -> Text("Dein Handy hat leider keinen Schrittzähler-Sensor.")
                 !permission -> {
-                    Text("Erlaube den Zugriff auf deine Schritte. Je 100 Schritte gibt es 1 EP. Nach längeren Spaziergängen wird dein Tierchen aber schmutzig.")
+                    Text("Erlaube den Zugriff auf deine Schritte. Je ${PetEngine.STEPS_PER_EXP} Schritte gibt es 1 EP. Nach längeren Spaziergängen wird dein Tierchen aber schmutzig.")
                     Button(onClick = onAllow) { Text("Schrittzähler erlauben") }
                 }
                 else -> {
                     Text("Heute gezählt: $stepsToday")
-                    Text("Bereit zum Einlösen: $pending (= ${pending / 100} EP)")
-                    Button(onClick = onRedeem, enabled = pending >= 100) { Text("Einlösen") }
+                    Text("Bereit zum Einlösen: $pending (= ${pending / PetEngine.STEPS_PER_EXP} EP)")
+                    Button(onClick = onRedeem, enabled = pending >= PetEngine.STEPS_PER_EXP) { Text("Einlösen") }
                     Text(
                         "Alle ${PetEngine.STEPS_PER_DIRT} Schritte gibt es einen Schmutzfleck zum Putzen.",
                         style = MaterialTheme.typography.labelSmall,

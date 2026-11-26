@@ -5,7 +5,7 @@ import app.psykit.core.save.KeyValueStore
 import app.psykit.core.save.LoadResult
 import app.psykit.core.save.SaveStore
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -45,9 +45,12 @@ class SaveStoreTest {
         // Ein voll befüllter Spielstand, erzeugt mit dem Code von v52, muss ohne Verlust gelesen werden.
         val r = SaveStore.decode(fixture)
         assertIs<LoadResult.Ok>(r)
-        val before: JsonElement = Json.parseToJsonElement(fixture)
-        val after: JsonElement = Json.parseToJsonElement(SaveStore.encode(r.state))
-        assertEquals(before, after, "Beim Lesen und erneuten Schreiben ist ein Wert verloren gegangen oder verändert worden")
+        // Jedes Feld aus v52 muss mit demselben Wert erhalten bleiben; neue Felder dürfen dazukommen.
+        val before = Json.parseToJsonElement(fixture).jsonObject
+        val after = Json.parseToJsonElement(SaveStore.encode(r.state)).jsonObject
+        before.forEach { (key, value) ->
+            assertEquals(value, after[key], "Feld „$key“ ist beim Lesen und erneuten Schreiben verloren gegangen oder verändert worden")
+        }
         assertEquals("Enko", r.state.name)
         assertTrue(r.state.run != null, "Laufender Dungeon-Lauf fehlt")
     }

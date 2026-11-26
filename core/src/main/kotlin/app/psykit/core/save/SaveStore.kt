@@ -53,6 +53,9 @@ class SaveStore(private val kv: KeyValueStore) {
 
     fun write(id: String, s: PetState) = kv.write { put(stateKey(id), encode(s)) }
 
+    /** Mehrere Spielstände in einem Schreibvorgang (z. B. beide Tierchen beim Besuch, Befund 08). */
+    fun writeAll(states: Map<String, PetState>) = kv.write { states.forEach { (id, s) -> put(stateKey(id), encode(s)) } }
+
     /**
      * Legt eine Kopie eines nicht lesbaren Stands an. Gibt es schon eine Kopie mit genau diesem Inhalt,
      * entsteht keine zweite. Gibt den Schlüssel der Kopie zurück.

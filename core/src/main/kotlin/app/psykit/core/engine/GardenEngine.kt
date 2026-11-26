@@ -42,6 +42,9 @@ object GardenEngine {
     const val WEED_CHANCE = 0.30
     const val WEED_SLOWDOWN = 0.75f   // 25 % langsamer
     const val FERTILIZER_SPEEDUP = 1.5f // 50 % schneller
+    /** Befund 10: Anzeigetext zum Düngerfaktor, abgeleitet aus [FERTILIZER_SPEEDUP]. */
+    val fertilizerPercent: Int get() = kotlin.math.round((FERTILIZER_SPEEDUP - 1f) * 100f).toInt()
+    fun hoursText(h: Float): String = if (h == kotlin.math.floor(h)) "${h.toInt()} Stunden" else "${"%.1f".format(h).replace('.', ',')} Stunden"
     const val SNAIL_CHANCE = 0.10
     const val SNAIL_FROM_HOUR = 7
     const val SNAIL_TO_HOUR = 23
@@ -217,8 +220,9 @@ object GardenEngine {
             }
         }
         ns = withPlot(ns, i, Plot(plantedAt = now, v = 1, berry = berry.name))
-        val hint = if (berry == Berry.BLUE) "Gieß sie zweimal mit mindestens 4 Stunden Abstand, dann ist sie reif."
-        else "Gieß sie ${berry.needWaterings}-mal, mit mindestens ${berry.gapHours.toInt()} Stunden Abstand."
+        // Befund 09: Werte kommen aus der Sorte; der Abstand ist ein Grundwert (Dünger und Gegenstände verkürzen ihn)
+        val hint = "Gieß sie ${berry.needWaterings}-mal, mit mindestens ${hoursText(berry.gapHours)} Grundabstand" +
+            (if (berry == Berry.BLUE) ", dann ist sie reif." else ".")
         return ActionResult(ns, "${berry.emoji} ${berry.label} gesät! $hint", reaction = Reaction.HAPPY)
     }
 
@@ -286,7 +290,7 @@ object GardenEngine {
         if (!growing(stage(p, now, s))) return ActionResult(s, "Dünger hilft nur Pflanzen, die gerade wachsen.", false)
         if (p.fertilized) return ActionResult(s, "Dieses Beet ist schon gedüngt.", false)
         if (s.fertilizer <= 0) return ActionResult(s, "Kein Dünger da. Je $COMPOST_PER_FERTILIZER weggeschaufelte Häufchen ergeben 1 Dünger.", false)
-        return ActionResult(withPlot(s, i, p.copy(fertilized = true)).copy(fertilizer = s.fertilizer - 1), "Gedüngt! Diese Pflanze wächst jetzt 50 % schneller.", reaction = Reaction.HAPPY)
+        return ActionResult(withPlot(s, i, p.copy(fertilized = true)).copy(fertilizer = s.fertilizer - 1), "Gedüngt! Diese Pflanze wächst jetzt $fertilizerPercent % schneller.", reaction = Reaction.HAPPY)
     }
 
     fun harvestCount(p: Plot): Int = p.kind.harvest + min(p.kind.maxBonus, max(0, p.cleanWaterings - 1))

@@ -252,15 +252,9 @@ fun CloudHopGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) 
     }
 }
 
-private fun DrawScope.drawCloud(c: Offset, r: Float, color: Color) {
-    drawCircle(color, r * 0.75f, c + Offset(-r * 0.6f, r * 0.1f))
-    drawCircle(color, r, c + Offset(0f, -r * 0.15f))
-    drawCircle(color, r * 0.7f, c + Offset(r * 0.65f, r * 0.12f))
-    drawRoundRect(
-        color, topLeft = c + Offset(-r * 1.2f, 0f), size = androidx.compose.ui.geometry.Size(r * 2.4f, r * 0.7f),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(r * 0.35f, r * 0.35f),
-    )
-}
+/** Gleiche flauschige Wolke wie im Zuhause, auf die bisherige Breite (ca. 2,7 r) skaliert. */
+private fun DrawScope.drawCloud(c: Offset, r: Float, color: Color) =
+    drawFluffyCloud(c + Offset(0f, r * 0.1f), r * 0.5f, alpha = 1f, tint = color)
 
 // ---------------------------------------------------------------- Besuch
 

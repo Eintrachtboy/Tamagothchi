@@ -1,5 +1,12 @@
 package app.psykit.ui
 
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -105,16 +112,16 @@ enum class Mode(val icon: String, val label: String) {
 
 @Composable
 fun PetScreen(vm: PetViewModel) {
-    val s by vm.state.collectAsState()
-    val message by vm.message.collectAsState()
-    val stepsToday by vm.stepsToday.collectAsState()
-    val reaction by vm.reaction.collectAsState()
-    val floating by vm.floating.collectAsState()
-    val spriteVersion by vm.spriteVersion.collectAsState()
-    val packHead by vm.headPoint.collectAsState()
-    val headVersion by vm.headVersion.collectAsState()
-    val hasTailSetting by vm.hasTail.collectAsState()
-    val saveLocked by vm.currentLocked.collectAsState()
+    val s by vm.state.collectAsStateWithLifecycle()
+    val message by vm.message.collectAsStateWithLifecycle()
+    val stepsToday by vm.stepsToday.collectAsStateWithLifecycle()
+    val reaction by vm.reaction.collectAsStateWithLifecycle()
+    val floating by vm.floating.collectAsStateWithLifecycle()
+    val spriteVersion by vm.spriteVersion.collectAsStateWithLifecycle()
+    val packHead by vm.headPoint.collectAsStateWithLifecycle()
+    val headVersion by vm.headVersion.collectAsStateWithLifecycle()
+    val hasTailSetting by vm.hasTail.collectAsStateWithLifecycle()
+    val saveLocked by vm.currentLocked.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -390,7 +397,15 @@ fun PetScreen(vm: PetViewModel) {
                         sceneTopLeft = b.topLeft
                         sceneSize = it.size
                     },
-                    interaction = if (isEgg) Modifier else sceneInteraction,
+                    interaction = if (isEgg) Modifier else sceneInteraction.semantics {
+                        // Befund 05: Streicheln, Kraulen und Häufchen wegräumen auch per TalkBack (ohne Wischgesten)
+                        contentDescription = "${s.name}"
+                        customActions = buildList {
+                            add(CustomAccessibilityAction("Streicheln") { vm.stroke((PetEngine.STROKE_SLOW + PetEngine.STROKE_FAST) / 2f); true })
+                            (body?.map?.zones ?: Zone.entries).forEach { z -> add(CustomAccessibilityAction("Kraulen: ${z.label}") { scratchAt(z); true }) }
+                            if (s.poops > 0) add(CustomAccessibilityAction("Häufchen wegräumen") { vm.removePoop(); true })
+                        }
+                    },
                     dim = if (mode == Mode.SLEEP) 1f - light else 0f,
                     floating = floating,
                     wear = Wearables.of(s, headPoint),

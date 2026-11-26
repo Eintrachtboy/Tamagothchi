@@ -98,7 +98,10 @@ fun DrawScope.drawDayDecor(sunColor: Color) {
     drawCloud(Offset(w * 0.52f, h * 0.29f), h * 0.028f, alpha = 0.7f)
 }
 
-private fun DrawScope.drawCloud(center: Offset, r: Float, alpha: Float = 0.95f) {
+/** Runde, flauschige Wolke; auch in den Spielen verwendet. [tint] färbt die Wolke (z. B. Ziel-Wolke gelb). */
+fun DrawScope.drawFluffyCloud(center: Offset, r: Float, alpha: Float = 0.95f, tint: Color = Color.White) = drawCloud(center, r, alpha, tint)
+
+private fun DrawScope.drawCloud(center: Offset, r: Float, alpha: Float = 0.95f, tint: Color = Color.White) {
     // Runde, flauschige Wolke (Runde 10): Kuppel aus vier ähnlich großen Bällchen, breite flache Unterkante
     data class Puff(val dx: Float, val dy: Float, val rad: Float)
     val top = listOf(Puff(-1.35f, -0.15f, 0.85f), Puff(-0.55f, -0.55f, 1.0f), Puff(0.35f, -0.6f, 1.05f), Puff(1.2f, -0.25f, 0.9f))
@@ -107,14 +110,14 @@ private fun DrawScope.drawCloud(center: Offset, r: Float, alpha: Float = 0.95f) 
         Puff(0.6f, 0.35f, 0.8f), Puff(1.45f, 0.35f, 0.75f), Puff(2.1f, 0.3f, 0.6f),
     )
     val all = top + base
-    val shade = Color(0xFFCFE1F3).copy(alpha = alpha)
-    val body = Color.White.copy(alpha = alpha)
+    val shade = (if (tint == Color.White) Color(0xFFCFE1F3) else androidx.compose.ui.graphics.lerp(tint, Color(0xFF8FA8C8), 0.25f)).copy(alpha = alpha)
+    val body = tint.copy(alpha = alpha)
     all.forEach { p -> drawCircle(shade, p.rad * r, Offset(center.x + p.dx * r, center.y + (p.dy + 0.16f) * r)) }
     all.forEach { p -> drawCircle(body, p.rad * r, Offset(center.x + p.dx * r, center.y + p.dy * r)) }
     drawRoundRect(body, topLeft = Offset(center.x - 2.2f * r, center.y + 0.15f * r), size = Size(4.4f * r, 0.75f * r),
         cornerRadius = androidx.compose.ui.geometry.CornerRadius(0.375f * r))
     top.forEach { p ->
-        drawCircle(Color(0xFFF4F9FF).copy(alpha = alpha), p.rad * r * 0.5f, Offset(center.x + (p.dx - 0.12f) * r, center.y + (p.dy - 0.18f) * r))
+        drawCircle(androidx.compose.ui.graphics.lerp(tint, Color.White, 0.6f).copy(alpha = alpha), p.rad * r * 0.5f, Offset(center.x + (p.dx - 0.12f) * r, center.y + (p.dy - 0.18f) * r))
     }
 }
 

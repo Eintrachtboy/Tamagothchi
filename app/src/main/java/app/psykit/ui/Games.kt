@@ -97,6 +97,9 @@ fun GameDialog(
     var phase by remember { mutableStateOf(0) }
     var round by remember { mutableStateOf(0) }
     val firstTime = remember { kind.name !in s.gamesIntroSeen }
+    // Befund 19: Steuerung für Beerenfang, „Ziehen“ vorausgewählt, Wahl wird gemerkt
+    val gamePrefs = LocalContext.current.getSharedPreferences("psykit", Context.MODE_PRIVATE)
+    var berriesTilt by remember { mutableStateOf(gamePrefs.getBoolean("berries_tilt", false)) }
     // In den Spielen immer dein Standardbild („Normal“) zeigen
     val sprite = remember(s.stage) { vm.sprites.load(s.stage, SpriteVariant.BASE) ?: sprite }
     // Vollbild im App-Fenster statt eigenem Dialog-Fenster, damit unten nichts unter der Navigationsleiste verschwindet
@@ -119,6 +122,10 @@ fun GameDialog(
                             Text(gameInfo(kind), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
                             Spacer(Modifier.height(6.dp))
                             Text("Zeit und Wertung starten erst mit „Spielen“.", style = MaterialTheme.typography.bodySmall)
+                            if (kind == GameKind.BERRIES) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                                androidx.compose.material3.FilterChip(selected = !berriesTilt, onClick = { berriesTilt = false; gamePrefs.edit().putBoolean("berries_tilt", false).apply() }, label = { Text("✋ Ziehen") })
+                                androidx.compose.material3.FilterChip(selected = berriesTilt, onClick = { berriesTilt = true; gamePrefs.edit().putBoolean("berries_tilt", true).apply() }, label = { Text("📱 Neigen") })
+                            }
                             Spacer(Modifier.height(16.dp))
                             Button(onClick = { vm.markIntroSeen(kind); result = null; round++; phase = 1 }) { Text("▶ Spielen") }
                             // Besuch verändert zwei Tierchen; dort gibt es keine Übungsrunde
@@ -156,7 +163,7 @@ fun GameDialog(
                             GameKind.HIDE_SEEK -> HideSeekGame(sprite, s, done)
                             GameKind.MEMORY -> MemoryGame(done)
                             GameKind.BUBBLES -> BubblesGame(done)
-                            GameKind.BERRIES -> BerriesGame(sprite, s, done)
+                            GameKind.BERRIES -> BerriesGame(sprite, s, berriesTilt, done)
                             GameKind.REACTION -> ReactionGame(sprite, s, done)
                             GameKind.ECHO -> EchoGame(done)
                             GameKind.SHADOW -> ShadowGame(done)
@@ -251,12 +258,23 @@ private fun HideSeekGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -
         BoxWithConstraints(Modifier.fillMaxWidth().height(240.dp)) {
             val slotW = maxWidth / 3
             for (i in 0 until 3) {
-                val x by animateFloatAsState(slot[i].toFloat(), tween(speed), label = "cloud$i")
+                // Befund 23: Beim Tauschen läuft eine Wolke auf einem Bogen nach oben, die andere nach unten
+                val target = slot[i].toFloat()
+                val anim = remember { androidx.compose.animation.core.Animatable(target) }
+                var from by remember { mutableFloatStateOf(target) }
+                LaunchedEffect(target) {
+                    from = anim.value
+                    anim.animateTo(target, tween(speed))
+                    from = target
+                }
+                val x = anim.value
+                val frac = if (target != from) ((x - from) / (target - from)).coerceIn(0f, 1f) else 0f
+                val arc = (kotlin.math.sin(frac * Math.PI).toFloat() * 18f) * (if (target > from) -1f else 1f)
                 val up = i == hidden && (phase == "show" || phase == "reveal")
                 val petDown by animateFloatAsState(if (up) 0f else 1f, tween(if (up) 400 else 800), label = "pet$i")
                 Box(
                     Modifier
-                        .offset(x = slotW * x, y = 20.dp)
+                        .offset(x = slotW * x, y = 20.dp + arc.dp)
                         .size(slotW, 210.dp)
                         .clickable(enabled = phase == "guess") {
                             picked = i
@@ -277,14 +295,8 @@ private fun HideSeekGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -
                     Canvas(Modifier.fillMaxWidth().height(120.dp).align(Alignment.BottomCenter).padding(horizontal = 4.dp)) {
                         val w = size.width; val h = size.height
                         val c = if (phase == "reveal" && i == picked && i != hidden) Color(0xFFFFD6D6) else Color.White
-                        drawCircle(c, w * 0.26f, Offset(w * 0.28f, h * 0.55f))
-                        drawCircle(c, w * 0.33f, Offset(w * 0.52f, h * 0.42f))
-                        drawCircle(c, w * 0.25f, Offset(w * 0.76f, h * 0.58f))
-                        drawRoundRect(
-                            c, topLeft = Offset(w * 0.06f, h * 0.5f), size = androidx.compose.ui.geometry.Size(w * 0.88f, h * 0.38f),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(h * 0.19f, h * 0.19f),
-                        )
-                        drawCircle(Color(0xFFB8D4F0), w * 0.33f, Offset(w * 0.52f, h * 0.42f), style = Stroke(3f))
+                        // gleiche flauschige Wolke wie im Zuhause
+                        drawFluffyCloud(Offset(w * 0.5f, h * 0.58f), minOf(w / 5.5f, h / 3.2f), alpha = 1f, tint = c)
                     }
                 }
             }
@@ -460,7 +472,7 @@ private fun BubblesGame(onDone: (Int, Int, Int) -> Unit) {
 private class Berry(var x: Float, var y: Float, val v: Float, val golden: Boolean)
 
 @Composable
-private fun BerriesGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
+private fun BerriesGame(sprite: Sprite?, s: PetState, useTilt: Boolean, onDone: (Int, Int, Int) -> Unit) {
     val ctx = LocalContext.current
     val berries = remember { ArrayList<Berry>() }
     var caught by remember { mutableIntStateOf(0) }
@@ -472,15 +484,20 @@ private fun BerriesGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) ->
     var catcherX by remember { mutableFloatStateOf(0.5f) } // 0..1
     var tilt by remember { mutableFloatStateOf(0f) }
     var hasSensor by remember { mutableStateOf(false) }
+    // Befund 19: Im Ziehmodus wird der Sensor gar nicht angemeldet. Im Neigemodus gilt die Haltung beim Start als Mitte (Kalibrierung).
+    var baseline by remember { mutableStateOf<Float?>(null) }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(useTilt) {
         val sm = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val acc = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         val listener = object : SensorEventListener {
-            override fun onSensorChanged(e: SensorEvent) { tilt = e.values[0] }
+            override fun onSensorChanged(e: SensorEvent) {
+                val b = baseline ?: e.values[0].also { baseline = it }
+                tilt = e.values[0] - b
+            }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
-        if (acc != null) { hasSensor = true; sm.registerListener(listener, acc, SensorManager.SENSOR_DELAY_GAME) }
+        if (useTilt && acc != null) { hasSensor = true; sm.registerListener(listener, acc, SensorManager.SENSOR_DELAY_GAME) }
         onDispose { sm.unregisterListener(listener) }
     }
 
@@ -492,7 +509,7 @@ private fun BerriesGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) ->
                 val dt = (now - last) / 1e9f; last = now
                 timeLeft = (timeLeft - dt).coerceAtLeast(0f)
                 // Kippen: Handy nach rechts geneigt -> x-Beschleunigung negativ -> nach rechts
-                catcherX = (catcherX - tilt * 0.12f * dt).coerceIn(0.08f, 0.92f)
+                if (useTilt && hasSensor) catcherX = (catcherX - tilt * 0.12f * dt).coerceIn(0.08f, 0.92f)
                 if (area.width > 0f) {
                     spawn -= dt
                     val elapsed = 45f - timeLeft
@@ -523,7 +540,12 @@ private fun BerriesGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) ->
 
     Column(Modifier.fillMaxSize()) {
         Text("Gefangen: ${caught + golden} · ✨ $golden · Zeit: ${timeLeft.roundToInt()} s", fontWeight = FontWeight.Bold)
-        Text(if (hasSensor) "Kipp das Handy nach links und rechts (oder zieh mit dem Finger)." else "Zieh mit dem Finger nach links und rechts.", style = MaterialTheme.typography.bodySmall)
+        Text(
+            if (useTilt && hasSensor) "Kipp das Handy nach links und rechts. Die Haltung beim Start ist die Mitte."
+            else if (useTilt) "Kein Neigungssensor gefunden: Zieh mit dem Finger nach links und rechts."
+            else "Zieh mit dem Finger nach links und rechts.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         Spacer(Modifier.height(8.dp))
         BoxWithConstraints(
             Modifier

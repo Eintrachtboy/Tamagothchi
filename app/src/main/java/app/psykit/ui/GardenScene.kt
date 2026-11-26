@@ -204,15 +204,21 @@ fun GardenScene(vm: PetViewModel, s: PetState, sprite: Sprite?, seed: Berry, fer
             val p = beds[i]
             if (p.snailSince > 0) Text("🐌", fontSize = 24.sp, modifier = Modifier.offset(x + 14.dp + (sin(t * 6.28f) * 2).dp, y - 6.dp))
             val st = GardenEngine.stage(p, now, s)
+            // Kurz und mit Symbolen: Sorte, Gießstand, Wartezeit, Unkraut, Dünger
             val label = when (st) {
                 PlotStage.EMPTY -> "frei"
-                PlotStage.WITHERED -> "vertrocknet"
-                PlotStage.RIPE -> "${p.kind.emoji} reif!"
-                else -> "${p.kind.emoji} 💧${p.waterings}/${p.kind.needWaterings}"
-            }
+                PlotStage.WITHERED -> "🥀 neu säen"
+                PlotStage.RIPE -> "${p.kind.emoji} reif ×${GardenEngine.harvestCount(p)}"
+                else -> {
+                    val hrs = GardenEngine.hoursUntilGrowth(s, p, now)
+                    val wait = if (hrs <= 0f) "💧 jetzt" else "⏳ " + GardenEngine.formatHours(hrs).removePrefix("etwa ").replace(" Stunden", " h").replace(" Stunde", " h").replace(" Minuten", " min")
+                    "${p.kind.emoji} ${p.waterings}/${p.kind.needWaterings} · $wait"
+                }
+            } + (if (p.weedSince > 0) " 🌿" else "") + (if (p.fertilized && GardenEngine.growing(st)) " 🧪" else "")
             Text(
                 label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2723),
-                modifier = Modifier.offset(x - 40.dp, y + with(density) { (BED_H / 2 * hPx).toDp() }).width(80.dp)
+                maxLines = 1,
+                modifier = Modifier.offset(x - 52.dp, y + with(density) { (BED_H / 2 * hPx).toDp() }).width(104.dp)
                     .background(Color(0xBBFFFFFF), RoundedCornerShape(8.dp)),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
@@ -278,45 +284,25 @@ private fun DrawScope.drawWeed(at: Offset, h: Float) {
 fun GardenPanel(s: PetState, vm: PetViewModel, seed: Berry, onSeed: (Berry) -> Unit, fertilizeMode: Boolean, onFertilizeMode: (Boolean) -> Unit) {
     val now = s.lastUpdate
     var showMixer by remember { mutableStateOf(false) }
-    Text("Tipp ein Beet an: ${s.name} läuft hin und kümmert sich darum (Schnecke wegtragen, jäten, ernten, säen oder gießen).", style = MaterialTheme.typography.bodySmall)
-    Text("Saatgut für freie Beete", fontWeight = FontWeight.Bold)
+    // Weniger Text: Der Zustand jedes Beets steht direkt am Beet im Bild.
+    Text("🌱 Saat (für freie Beete)", fontWeight = FontWeight.Bold)
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Berry.entries.forEach { b ->
             val price = when {
-                b.seedPrice < 0 -> "${s.goldSeeds} Samen"
+                b.seedPrice < 0 -> "${s.goldSeeds}×"
                 b.seedPrice == 0 -> "gratis"
                 else -> "${b.seedPrice} ✨"
             }
-            FilterChip(selected = seed == b, onClick = { onSeed(b) }, label = { Text("${b.emoji} ${b.label} · $price") }, enabled = b.seedPrice >= 0 || s.goldSeeds > 0)
+            FilterChip(selected = seed == b, onClick = { onSeed(b) }, label = { Text("${b.emoji} $price") }, enabled = b.seedPrice >= 0 || s.goldSeeds > 0)
         }
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         FilterChip(selected = fertilizeMode, onClick = { onFertilizeMode(!fertilizeMode) }, enabled = s.fertilizer > 0 || fertilizeMode, label = { Text("🧪 Düngen (${s.fertilizer})") })
-        Text("Kompost ${s.compost}/${GardenEngine.COMPOST_PER_FERTILIZER} Häufchen", style = MaterialTheme.typography.labelMedium)
+        Text("♻️ ${s.compost}/${GardenEngine.COMPOST_PER_FERTILIZER}", style = MaterialTheme.typography.labelMedium)
     }
-    if (fertilizeMode) Text("Tipp jetzt eine wachsende Pflanze an: Sie wächst ${GardenEngine.fertilizerPercent} % schneller.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+    if (fertilizeMode) Text("Pflanze antippen: +${GardenEngine.fertilizerPercent} % Wachstum.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
 
-    // Überblick über jedes Beet
-    GardenEngine.beds(s).forEachIndexed { i, p ->
-        val st = GardenEngine.stage(p, now, s)
-        val parts = mutableListOf<String>()
-        when (st) {
-            PlotStage.EMPTY -> parts += "frei"
-            PlotStage.WITHERED -> parts += "vertrocknet, neu säen"
-            PlotStage.RIPE -> parts += "${p.kind.label} reif, ${GardenEngine.harvestCount(p)} Beeren"
-            else -> {
-                parts += "${p.kind.label} ${p.waterings}/${p.kind.needWaterings}"
-                val hrs = GardenEngine.hoursUntilGrowth(s, p, now)
-                parts += if (hrs <= 0f) "jetzt gießen" else "wächst wieder in ${GardenEngine.formatHours(hrs).removePrefix("etwa ")}"
-            }
-        }
-        if (p.weedSince > 0) parts += "Unkraut (−25 %)"
-        if (p.snailSince > 0) parts += "🐌 Schnecke!"
-        if (p.fertilized && GardenEngine.growing(st)) parts += "gedüngt (+${GardenEngine.fertilizerPercent} %)"
-        Text("Beet ${i + 1}: ${parts.joinToString(" · ")}", style = MaterialTheme.typography.bodySmall)
-    }
-
-    Text("Vorrat (antippen = naschen)", fontWeight = FontWeight.Bold)
+    Text("🧺 Vorrat (antippen = naschen)", fontWeight = FontWeight.Bold)
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Berry.entries.forEach { b ->
             val n = GardenEngine.count(s, b)
@@ -332,7 +318,6 @@ fun GardenPanel(s: PetState, vm: PetViewModel, seed: Berry, onSeed: (Berry) -> U
             Text("🔓 Beet ${k + 4} freischalten · ${GardenEngine.BED_PRICES[k]} ✨ (ab Level ${GardenEngine.BED_LEVELS[k]})")
         }
     }
-    Text("Gießkannen gibt es im Laden. Häufchen, die du mit der Schaufel wegräumst, werden zu Dünger.", style = MaterialTheme.typography.labelSmall)
     if (showMixer) MixerDialog(s, vm, onDismiss = { showMixer = false })
 }
 

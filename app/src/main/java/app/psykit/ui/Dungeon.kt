@@ -145,15 +145,46 @@ private fun FloorSelect(s: PetState, vm: PetViewModel) {
         if (blocker != null) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
             Text("⚠️ $blocker", Modifier.padding(12.dp).fillMaxWidth(), fontWeight = FontWeight.Bold)
         }
-        Text("Zum Betreten: 1 🗝️ Schlüssel, mindestens 30 ⚡ Energie und 40 Gesundheit, und das Tierchen muss wach sein.", style = MaterialTheme.typography.bodySmall)
-        OutlinedButton(onClick = { info = !info }) { Text(if (info) "Regeln ausblenden" else "Wie funktioniert der Dungeon?") }
+        // Übersicht: nächste Ebene direkt starten, nur die aktuelle Welt ist aufgeklappt
+        val next = Floors.all.firstOrNull { it.index == s.dungeonProgress }
+        val activeWorld = next?.world ?: World.entries.last().n
+        var openWorld by remember { mutableStateOf(activeWorld) }
+        if (next != null && DungeonEngine.unlocked(s, next.index)) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+            Row(Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("▶ Weiter: ${World.of(next.world).emoji} ${next.code} ${next.name}", fontWeight = FontWeight.Bold)
+                    Text("Level ${next.level}" + if (next.rule.name != "NONE") " · ${next.rule.label}" else "", style = MaterialTheme.typography.bodySmall)
+                }
+                Button(onClick = {
+                    val why = DungeonEngine.cannotEnter(s, next.index)
+                    if (why != null) vm.say(why) else vm.enterDungeon(next.index)
+                }) { Text("Los") }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Eintritt: 🗝️ 1 · ⚡ 30 · ❤️ 40 · wach", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            TextButton(onClick = { info = !info }) { Text(if (info) "Regeln zu" else "ℹ️ Regeln") }
+        }
         if (info) DungeonRules()
         World.entries.forEach { w ->
+            val floors = Floors.all.filter { it.world == w.n }
+            val doneCount = floors.count { it.index < s.dungeonProgress }
+            val isOpen = openWorld == w.n
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.padding(12.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     val set = Item.completeSets(s).contains(w.n)
-                    Text("${w.emoji} Welt ${w.n}: ${w.label}" + if (set) " · ${Item.setTitle(w.n)}" else "", fontWeight = FontWeight.Bold)
-                    Floors.all.filter { it.world == w.n }.forEach { f ->
+                    val anyOpen = floors.any { DungeonEngine.unlocked(s, it.index) }
+                    Row(
+                        Modifier.fillMaxWidth().clickable { openWorld = if (isOpen) -1 else w.n },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            (if (!anyOpen) "🔒 " else "") + "${w.emoji} Welt ${w.n}: ${w.label}" + if (set) " · ${Item.setTitle(w.n)}" else "",
+                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
+                        )
+                        Text("$doneCount/${floors.size} ✓  " + if (isOpen) "▲" else "▼", style = MaterialTheme.typography.labelMedium)
+                    }
+                    if (isOpen) floors.forEach { f ->
                         val open = DungeonEngine.unlocked(s, f.index)
                         val done = f.index < s.dungeonProgress
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -213,7 +244,7 @@ private fun DungeonRules() {
             Text("• Jede Ebene versteckt eine Attacke, die es nirgends zu kaufen gibt. Jeder Sieg über Wächter oder Boss gibt 40 % Chance, spätestens beim dritten Sieg gehört sie dir.", style = MaterialTheme.typography.bodySmall)
             Text("• Nach normalen Kämpfen und Elitekämpfen wählst du eine von drei Fundkarten: eine Attacke nur für diesen Lauf, auf einem 5. Platz. Überspringen gibt +${DungeonEngine.SKIP_CARD_DUST} ✨.", style = MaterialTheme.typography.bodySmall)
             Text("• Kombos: Manche Zustände und Attackentypen passen besonders gut zusammen. Probier aus, was passiert! Gefundene Kombos stehen im Sammelbuch.", style = MaterialTheme.typography.bodySmall)
-            Text("• Attacken werden mit Übung besser: nach ${MoveId.LEVEL2_USES} Einsätzen ★ (+15 %), nach ${MoveId.LEVEL3_USES} ★★ (+30 % und ein Extra).", style = MaterialTheme.typography.bodySmall)
+            Text("• Attacken werden mit Übung besser: nach ${MoveId.LEVEL2_USES} Einsätzen ★ (+15 %), nach ${MoveId.LEVEL3_USES} ★★ (+30 % und ein Extra). Eine neue Stufe gilt ab dem nächsten Kampf.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

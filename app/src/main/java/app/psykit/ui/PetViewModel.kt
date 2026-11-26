@@ -84,8 +84,8 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     fun feed(food: Food) = act { s, now -> PetEngine.track(PetEngine.feed(s, food, now), Quest.FEED) }
     fun stroke(speedDp: Float) = act { s, now -> PetEngine.track(PetEngine.stroke(s, speedDp, now), Quest.STROKE) }
     /** [hint]: Richtungstipp aus den echten Zonen eines eigenen Bildes (K3); null = eingebaute Figur. */
-    fun scratch(zone: Zone, hint: ((Zone, Zone) -> String)? = null) = act { s, now ->
-        val r = if (hint != null) PetEngine.scratch(s, zone, now, repo.zone, hint) else PetEngine.scratch(s, zone, now, repo.zone)
+    fun scratch(zone: Zone, hint: ((Zone, Zone) -> String)? = null, zones: List<Zone> = Zone.entries) = act { s, now ->
+        val r = if (hint != null) PetEngine.scratch(s, zone, now, repo.zone, hint, zones) else PetEngine.scratch(s, zone, now, repo.zone, zones = zones)
         if (r.reaction == Reaction.JUMP) PetEngine.track(r, Quest.SCRATCH) else r
     }
     fun clean(fraction: Float) = act { s, _ -> PetEngine.track(PetEngine.clean(s, fraction), Quest.CLEAN) }
@@ -164,6 +164,8 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { packs.activate(info.id) }
                 _floating.value = packs.floating
                 _headPoint.value = HeadPoint.decode(packs.headPoint) ?: HeadPoint()
+                // Neues Paket: Punkte je Stufe und „hat Schwanz“ neu bestimmen (Rückfrage, falls keine Schwanzfläche gefunden wird)
+                packs.clearStageHeads(); setHasTail(null)
                 if (info.petName.isNotBlank()) rename(info.petName)
                 _spriteVersion.value++
                 "Paket „${info.name}“ mit ${info.images} Bildern importiert und aktiviert." +
@@ -179,6 +181,7 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         val info = packs.activate(id)
         _floating.value = packs.floating
         _headPoint.value = HeadPoint.decode(packs.headPoint) ?: HeadPoint()
+        packs.clearStageHeads(); setHasTail(null)
         if (info != null) {
             if (info.petName.isNotBlank()) rename(info.petName)
             _message.value = "Jetzt mit Figur „${info.name}“."
@@ -264,7 +267,17 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
     /** Sitz von Hut und Brille auf eigenen Bildern. */
     private val _headPoint = MutableStateFlow(HeadPoint.decode(packs.headPoint) ?: HeadPoint())
     val headPoint: StateFlow<HeadPoint> = _headPoint
-    fun setHeadPoint(h: HeadPoint) { packs.headPoint = h.encode(); _headPoint.value = h }
+    fun setHeadPoint(h: HeadPoint) { packs.headPoint = h.encode(); _headPoint.value = h; _headVersion.value++ }
+
+    // Runde 3: Punkte je Stufe und „hat Schwanz“
+    private val _headVersion = MutableStateFlow(0)
+    val headVersion: StateFlow<Int> = _headVersion
+    fun headFor(stage: Stage): HeadPoint = HeadPoint.decode(packs.headPointFor(stage.name)) ?: _headPoint.value
+    fun setHeadPointFor(stage: Stage, h: HeadPoint) { packs.setHeadPointFor(stage.name, h.encode()); _headVersion.value++ }
+    fun resetHeadPointFor(stage: Stage) { packs.setHeadPointFor(stage.name, null); _headVersion.value++ }
+    private val _hasTail = MutableStateFlow(packs.hasTail)
+    val hasTail: StateFlow<Boolean?> = _hasTail
+    fun setHasTail(v: Boolean?) { packs.hasTail = v; _hasTail.value = v; _headVersion.value++ }
 
     // ---------- Mehrere Tierchen ----------
     val currentPetId: StateFlow<String> = repo.currentId
@@ -284,6 +297,8 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         packs = CharacterPacks(getApplication(), sprites)
         _floating.value = packs.floating
         _headPoint.value = HeadPoint.decode(packs.headPoint) ?: HeadPoint()
+        _hasTail.value = packs.hasTail
+        _headVersion.value++
         _spriteVersion.value++
     }
 

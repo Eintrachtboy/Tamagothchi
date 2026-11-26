@@ -28,6 +28,8 @@ class BodyMap(
     eyesY: Float,
     mouth: BodyPoint? = null,
     tail: BodyPoint? = null,
+    /** null = automatisch (Schwanzfläche gefunden?), true/false = vom Spieler festgelegt. */
+    hasTail: Boolean? = null,
 ) {
     init { require(mask.size == cols * rows && cols > 0 && rows > 0) }
 
@@ -44,24 +46,56 @@ class BodyMap(
     }
 
     val mouth: BodyPoint = mouth ?: BodyPoint(headX, (eyesY + max(0.04f, (eyesY - headTop)) * 0.8f).coerceAtMost(bottom))
-    val tail: BodyPoint = tail ?: autoTail(headX)
 
-    /** Mittelpunkte je Zone; Ohren und Wangen haben zwei Seiten. */
+    // Kern des Körpers: Kreis um den Kopf und Ellipse für den Rumpf. Was sichtbar ist und deutlich
+    // außerhalb liegt, ist Schwanz (alle Schwänze zählen, z. B. 9 bei einem Neunschweif).
+    private val headCx = headX
+    private val headCy = (headTop + this.mouth.y) / 2f
+    private val headR = max(headWidth * 0.62f, (this.mouth.y - headTop) * 0.75f)
+    private val bodyCx = headX
+    private val bodyCy = (this.mouth.y + bottom) / 2f
+    private val bodyRx = max(headWidth * 0.62f, 0.08f)
+    private val bodyRy = max((bottom - this.mouth.y) / 2f * 1.15f, 0.06f)
+
+    private fun inCore(x: Float, y: Float): Boolean {
+        val dh = hypot(x - headCx, y - headCy) / headR
+        val ex = (x - bodyCx) / bodyRx; val ey = (y - bodyCy) / bodyRy
+        return dh <= 1f || ex * ex + ey * ey <= 1f
+    }
+
+    private val tailCells: List<Int> = (0 until cols * rows).filter { i ->
+        mask[i] && !inCore((i % cols + 0.5f) / cols, (i / cols + 0.5f) / rows)
+    }
+
+    /** Hat die Figur einen Schwanz? Automatisch: genug sichtbare Fläche außerhalb von Kopf und Rumpf. */
+    val hasTail: Boolean = hasTail ?: (tail != null || tailCells.size >= max(4, cols * rows / 200))
+    /** Wurde automatisch eine Schwanzfläche gefunden (für die Rückfrage beim Import)? */
+    val tailAreaFound: Boolean get() = tailCells.size >= max(4, cols * rows / 200)
+
+    val tail: BodyPoint = tail ?: if (tailCells.isNotEmpty()) BodyPoint(
+        tailCells.map { (it % cols + 0.5f) / cols }.average().toFloat(),
+        tailCells.map { (it / cols + 0.5f) / rows }.average().toFloat(),
+    ) else autoTail(headX)
+
+    /** Stellen, die es bei dieser Figur gibt. */
+    val zones: List<Zone> = if (this.hasTail) Zone.entries else Zone.entries - Zone.TAIL
+
+    /** Mittelpunkte je Zone; Ohren und Wangen haben zwei Seiten, beide innerhalb der Kopfbreite. */
     val centers: Map<Zone, List<BodyPoint>> = run {
         val half = headWidth / 2f
         val chinY = min(bottom, this.mouth.y + 0.06f)
-        mapOf(
-            Zone.EARS to listOf(BodyPoint(headX - half * 0.75f, headTop + 0.02f), BodyPoint(headX + half * 0.75f, headTop + 0.02f)),
-            Zone.HEAD to listOf(BodyPoint(headX, (headTop + eyesY) / 2f)),
-            Zone.CHEEKS to listOf(BodyPoint(headX - half * 0.7f, (eyesY + this.mouth.y) / 2f), BodyPoint(headX + half * 0.7f, (eyesY + this.mouth.y) / 2f)),
-            Zone.CHIN to listOf(BodyPoint(this.mouth.x, chinY)),
-            Zone.BELLY to listOf(BodyPoint((left + right) / 2f, (chinY + bottom) / 2f + (bottom - chinY) * 0.05f)),
-            Zone.TAIL to listOf(this.tail),
-        )
+        buildMap {
+            put(Zone.EARS, listOf(BodyPoint(headX - half * 0.7f, headTop + 0.03f), BodyPoint(headX + half * 0.7f, headTop + 0.03f)))
+            put(Zone.HEAD, listOf(BodyPoint(headX, (headTop + eyesY) / 2f)))
+            put(Zone.CHEEKS, listOf(BodyPoint(headX - half * 0.6f, (eyesY + this@BodyMap.mouth.y) / 2f), BodyPoint(headX + half * 0.6f, (eyesY + this@BodyMap.mouth.y) / 2f)))
+            put(Zone.CHIN, listOf(BodyPoint(this@BodyMap.mouth.x, chinY)))
+            put(Zone.BELLY, listOf(BodyPoint(bodyCx, (chinY + bottom) / 2f + (bottom - chinY) * 0.05f)))
+            if (this@BodyMap.hasTail) put(Zone.TAIL, listOf(this@BodyMap.tail))
+        }
     }
 
     /** Mitte einer Zone (bei zwei Seiten der Mittelwert, für Richtungstipps). */
-    fun center(z: Zone): BodyPoint = centers.getValue(z).let { ps -> BodyPoint(ps.map { it.x }.average().toFloat(), ps.map { it.y }.average().toFloat()) }
+    fun center(z: Zone): BodyPoint = (centers[z] ?: listOf(tail)).let { ps -> BodyPoint(ps.map { it.x }.average().toFloat(), ps.map { it.y }.average().toFloat()) }
 
     fun visible(p: BodyPoint): Boolean {
         val x = (p.x * cols).toInt(); val y = (p.y * rows).toInt()
@@ -72,7 +106,9 @@ class BodyMap(
     /** Zone unter dem Punkt oder null, wenn dort kein sichtbarer Teil des Tierchens ist. */
     fun zoneAt(p: BodyPoint): Zone? {
         if (!visible(p)) return null
-        return centers.entries.minByOrNull { (_, ps) -> ps.minOf { hypot(it.x - p.x, it.y - p.y) } }?.key
+        if (hasTail && !inCore(p.x, p.y)) return Zone.TAIL
+        return centers.entries.filter { it.key != Zone.TAIL }
+            .minByOrNull { (_, ps) -> ps.minOf { hypot(it.x - p.x, it.y - p.y) } }?.key
     }
 
     /** Landet Futter am Mund? [tolerance] in Bildanteilen. */

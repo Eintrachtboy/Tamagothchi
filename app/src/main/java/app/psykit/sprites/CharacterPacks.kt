@@ -87,6 +87,17 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
         get() = prefs.getString("head_${store.petId}", null)
         set(v) { prefs.edit().putString("head_${store.petId}", v).apply() }
 
+    /** Kopf-, Mund- und Schwanzpunkte je Stufe (Runde 3: Proportionen ändern sich mit dem Alter). null = Wert des Pakets. */
+    fun headPointFor(stage: String): String? = prefs.getString("head_${store.petId}_$stage", null) ?: headPoint
+    fun setHeadPointFor(stage: String, v: String?) { prefs.edit().putString("head_${store.petId}_$stage", v).apply() }
+    fun hasStageHead(stage: String): Boolean = prefs.contains("head_${store.petId}_$stage")
+    fun clearStageHeads() { prefs.edit().apply { listOf("BABY", "CHILD", "TEEN", "ADULT").forEach { remove("head_${store.petId}_$it") } }.apply() }
+
+    /** Hat die Figur einen Schwanz? null = noch nicht gefragt (automatisch). Pro Tierchen. */
+    var hasTail: Boolean?
+        get() = prefs.getString("tail_${store.petId}", null)?.let { it == "yes" }
+        set(v) { prefs.edit().apply { if (v == null) remove("tail_${store.petId}") else putString("tail_${store.petId}", if (v) "yes" else "no") }.apply() }
+
     fun list(): List<PackInfo> = root.listFiles()?.filter { it.isDirectory }?.mapNotNull { info(it) }?.sortedBy { it.name.lowercase() } ?: emptyList()
 
     private fun info(dir: File): PackInfo? {

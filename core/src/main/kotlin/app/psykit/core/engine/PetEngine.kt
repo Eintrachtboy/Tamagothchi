@@ -273,10 +273,12 @@ object PetEngine {
         s: PetState, zone: Zone, now: Long, tz: ZoneId,
         /** Richtungstipp; bei eigenen Bildern aus den echten Zonenmitten der BodyMap (K3). */
         hint: (from: Zone, to: Zone) -> String = { a, b -> a.hintTowards(b) },
+        /** Mögliche Stellen; ohne Schwanz bei Figuren ohne Schwanz. */
+        zones: List<Zone> = Zone.entries,
     ): ActionResult {
         blocked(s)?.let { return it }
         val today = epochDay(now, tz)
-        val favorite = Zone.favoriteOn(today, s.bornAt)
+        val favorite = Zone.favoriteOn(today, s.bornAt, zones)
         val rewardsToday = if (s.scratchRewardDay == today) s.scratchRewardsToday else 0
         val rested = now - s.lastScratchRewardAt >= SCRATCH_COOLDOWN_MS
         // Freude nur mit Abstand und bis zur Tagesgrenze; der Fund der Lieblingsstelle zählt immer.

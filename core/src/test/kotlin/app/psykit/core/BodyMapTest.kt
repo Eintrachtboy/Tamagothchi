@@ -59,4 +59,33 @@ class BodyMapTest {
         val b = figure()
         b.bodyPoints(12, 42L).forEach { assertTrue(b.visible(it), "Fleck auf leerer Fläche: $it") }
     }
+
+    @Test fun manyTailsAllCountAsTail() {
+        // Neunschweif-artig: Kopf und Rumpf in der Mitte, Flammen-Schwänze links, rechts und über dem Kopf
+        val c = 40; val r = 40
+        val m = BooleanArray(c * r)
+        fun fill(x0: Int, x1: Int, y0: Int, y1: Int) { for (y in y0..y1) for (x in x0..x1) m[y * c + x] = true }
+        fill(15, 24, 10, 19)  // Kopf
+        fill(15, 24, 20, 35)  // Rumpf
+        fill(2, 8, 12, 30); fill(31, 37, 12, 30)  // seitliche Schwänze auf Kopfhöhe
+        fill(18, 21, 2, 6)    // Flamme über dem Kopf
+        val b = BodyMap(c, r, m, headX = 0.5f, headTop = 0.25f, headWidth = 0.25f, eyesY = 0.35f)
+        assertTrue(b.hasTail)
+        assertEquals(Zone.TAIL, b.zoneAt(BodyPoint(0.12f, 0.4f)), "linker Schwanz auf Wangenhöhe ist Schwanz, nicht Wange")
+        assertEquals(Zone.TAIL, b.zoneAt(BodyPoint(0.85f, 0.6f)), "rechter Schwanz")
+        assertEquals(Zone.HEAD, b.zoneAt(BodyPoint(0.5f, 0.3f)))
+    }
+
+    @Test fun figureWithoutTailNeverOffersTail() {
+        val c = 20; val r = 20
+        val m = BooleanArray(c * r)
+        for (y in 2..17) for (x in 7..12) m[y * c + x] = true
+        val b = BodyMap(c, r, m, headX = 0.5f, headTop = 0.1f, headWidth = 0.3f, eyesY = 0.25f)
+        assertFalse(b.tailAreaFound)
+        assertFalse(b.hasTail)
+        assertFalse(Zone.TAIL in b.zones)
+        assertTrue((0..400).none { d -> Zone.favoriteOn(d.toLong(), 7L, b.zones) == Zone.TAIL })
+        // ausdrücklich „hat Schwanz“ setzen geht trotzdem
+        assertTrue(BodyMap(c, r, m, 0.5f, 0.1f, 0.3f, 0.25f, hasTail = true).hasTail)
+    }
 }

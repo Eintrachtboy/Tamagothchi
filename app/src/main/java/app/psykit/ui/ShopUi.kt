@@ -251,14 +251,17 @@ private object BattleEngineInfo {
 @Composable
 fun CollectionDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () -> Unit) {
     var tab by remember { mutableStateOf(0) }
-    val headPoint by vm.headPoint.collectAsState()
+    val packHead by vm.headPoint.collectAsState()
+    val headVersion by vm.headVersion.collectAsState()
+    val hasTail by vm.hasTail.collectAsState()
+    val headPoint = remember(s.stage, headVersion, packHead) { vm.headFor(s.stage) }
     val footprint = rememberFootprint(sprite)
     var previewSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
     val density = androidx.compose.ui.platform.LocalDensity.current.density
     FullDialog("📖 Sammelbuch", s, onClose) {
         // Vorschau mit allem, was gerade getragen wird; im Tab „Sitz“ mit Körperpunkten (Befund 06)
-        val body = remember(footprint, headPoint, previewSize) {
-            SceneBody.of(footprint, headPoint, previewSize.width.toFloat(), previewSize.height.toFloat(), density, false)
+        val body = remember(footprint, headPoint, previewSize, hasTail) {
+            SceneBody.of(footprint, headPoint, previewSize.width.toFloat(), previewSize.height.toFloat(), density, false, hasTail)
         }
         PetScene(
             stage = s.stage, mood = s.mood, sleeping = false, poops = 0,
@@ -282,7 +285,7 @@ fun CollectionDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: ()
                 2 -> MovesEditor(s) { vm.setMoves(it); vm.say("Attacken gespeichert.") }
                 3 -> ComboTab(s)
                 4 -> GardenBookTab(s)
-                else -> FitTab(vm, headPoint, custom = sprite != null)
+                else -> FitTab(vm, headPoint, custom = sprite != null, stage = s.stage, hasTail = hasTail ?: body?.map?.hasTail ?: true)
             }
             Spacer(Modifier.height(12.dp))
         }
@@ -369,7 +372,7 @@ private fun DecoTab(vm: PetViewModel, s: PetState) {
 }
 
 @Composable
-private fun FitTab(vm: PetViewModel, h: HeadPoint, custom: Boolean) {
+private fun FitTab(vm: PetViewModel, h: HeadPoint, custom: Boolean, stage: app.psykit.core.model.Stage, hasTail: Boolean) {
     Text("Sitz von Hut und Brille", fontWeight = FontWeight.Bold)
     Text(
         if (custom) "Bei eigenen Bildern weiß die App nicht, wo der Kopf ist. Schieb Hut und Brille hier zurecht. Das gilt für dieses Bildpaket."
@@ -381,10 +384,10 @@ private fun FitTab(vm: PetViewModel, h: HeadPoint, custom: Boolean) {
         Text(label, style = MaterialTheme.typography.labelMedium)
         Slider(value = v, onValueChange = set, valueRange = range, enabled = custom)
     }
-    slider("Links ↔ rechts", h.x, 0f..1f) { vm.setHeadPoint(h.copy(x = it)) }
-    slider("Höhe des Kopfes", h.y, 0f..0.8f) { vm.setHeadPoint(h.copy(y = it)) }
-    slider("Kopfbreite", h.size, 0.15f..0.9f) { vm.setHeadPoint(h.copy(size = it)) }
-    slider("Höhe der Augen", h.eyes, 0.05f..0.8f) { vm.setHeadPoint(h.copy(eyes = it)) }
+    slider("Links ↔ rechts", h.x, 0f..1f) { vm.setHeadPointFor(stage, h.copy(x = it)) }
+    slider("Höhe des Kopfes", h.y, 0f..0.8f) { vm.setHeadPointFor(stage, h.copy(y = it)) }
+    slider("Kopfbreite", h.size, 0.15f..0.9f) { vm.setHeadPointFor(stage, h.copy(size = it)) }
+    slider("Höhe der Augen", h.eyes, 0.05f..0.8f) { vm.setHeadPointFor(stage, h.copy(eyes = it)) }
     // Befund 06: Mund und Schwanz für Füttern und Kraulen (ohne Einstellung automatisch aus dem Umriss)
     HorizontalDivider()
     Text("Mund und Schwanz", fontWeight = FontWeight.Bold)
@@ -392,19 +395,24 @@ private fun FitTab(vm: PetViewModel, h: HeadPoint, custom: Boolean) {
         "Der rosa Kreis ist der Mund (dorthin Futter ziehen), der grüne der Schwanz. Ohne Einstellung sucht die App beides selbst im Bild.",
         style = MaterialTheme.typography.bodySmall,
     )
-    if (h.mouthX == null) OutlinedButton(onClick = { vm.setHeadPoint(h.copy(mouthX = h.x, mouthY = (h.eyes + 0.12f).coerceAtMost(1f))) }, enabled = custom) { Text("Mund selbst einstellen") }
+    if (h.mouthX == null) OutlinedButton(onClick = { vm.setHeadPointFor(stage, h.copy(mouthX = h.x, mouthY = (h.eyes + 0.12f).coerceAtMost(1f))) }, enabled = custom) { Text("Mund selbst einstellen") }
     else {
-        slider("Mund links ↔ rechts", h.mouthX, 0f..1f) { vm.setHeadPoint(h.copy(mouthX = it)) }
-        slider("Mund Höhe", h.mouthY ?: 0.4f, 0f..1f) { vm.setHeadPoint(h.copy(mouthY = it)) }
-        TextButton(onClick = { vm.setHeadPoint(h.copy(mouthX = null, mouthY = null)) }) { Text("Mund automatisch") }
+        slider("Mund links ↔ rechts", h.mouthX, 0f..1f) { vm.setHeadPointFor(stage, h.copy(mouthX = it)) }
+        slider("Mund Höhe", h.mouthY ?: 0.4f, 0f..1f) { vm.setHeadPointFor(stage, h.copy(mouthY = it)) }
+        TextButton(onClick = { vm.setHeadPointFor(stage, h.copy(mouthX = null, mouthY = null)) }) { Text("Mund automatisch") }
     }
-    if (h.tailX == null) OutlinedButton(onClick = { vm.setHeadPoint(h.copy(tailX = 0.8f, tailY = 0.75f)) }, enabled = custom) { Text("Schwanz selbst einstellen") }
+    if (h.tailX == null) OutlinedButton(onClick = { vm.setHeadPointFor(stage, h.copy(tailX = 0.8f, tailY = 0.75f)) }, enabled = custom) { Text("Schwanz selbst einstellen") }
     else {
-        slider("Schwanz links ↔ rechts", h.tailX, 0f..1f) { vm.setHeadPoint(h.copy(tailX = it)) }
-        slider("Schwanz Höhe", h.tailY ?: 0.75f, 0f..1f) { vm.setHeadPoint(h.copy(tailY = it)) }
-        TextButton(onClick = { vm.setHeadPoint(h.copy(tailX = null, tailY = null)) }) { Text("Schwanz automatisch") }
+        slider("Schwanz links ↔ rechts", h.tailX, 0f..1f) { vm.setHeadPointFor(stage, h.copy(tailX = it)) }
+        slider("Schwanz Höhe", h.tailY ?: 0.75f, 0f..1f) { vm.setHeadPointFor(stage, h.copy(tailY = it)) }
+        TextButton(onClick = { vm.setHeadPointFor(stage, h.copy(tailX = null, tailY = null)) }) { Text("Schwanz automatisch") }
     }
-    OutlinedButton(onClick = { vm.setHeadPoint(HeadPoint()) }, enabled = custom) { Text("Zurücksetzen") }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text("Hat einen Schwanz", modifier = Modifier.weight(1f))
+        androidx.compose.material3.Switch(checked = hasTail, onCheckedChange = { vm.setHasTail(it) }, enabled = custom)
+    }
+    Text("Die Punkte gelten für die Stufe „${stage.displayName}“. Bilder einer Stufe (glücklich, traurig, hungrig, krank) sollten gleich aufgebaut sein.", style = MaterialTheme.typography.bodySmall)
+    OutlinedButton(onClick = { vm.resetHeadPointFor(stage) }, enabled = custom) { Text("Diese Stufe zurücksetzen") }
 }
 
 /** Zeigt Kopf-, Mund- und Schwanzpunkt auf der Vorschau (Befund 06). */

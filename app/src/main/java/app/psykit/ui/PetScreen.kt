@@ -108,7 +108,9 @@ fun PetScreen(vm: PetViewModel) {
     val reaction by vm.reaction.collectAsState()
     val floating by vm.floating.collectAsState()
     val spriteVersion by vm.spriteVersion.collectAsState()
-    val headPoint by vm.headPoint.collectAsState()
+    val packHead by vm.headPoint.collectAsState()
+    val headVersion by vm.headVersion.collectAsState()
+    val hasTailSetting by vm.hasTail.collectAsState()
     val saveLocked by vm.currentLocked.collectAsState()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -156,6 +158,8 @@ fun PetScreen(vm: PetViewModel) {
     val sprite = remember(s.stage, variant, spriteVersion) { vm.sprites.load(s.stage, variant) }
     val isEgg = s.stage == Stage.EGG
     val current by rememberUpdatedState(s)
+    // Punkte je Stufe (Runde 3), sonst die des Pakets
+    val headPoint = remember(s.stage, headVersion, packHead) { vm.headFor(s.stage) }
 
     // Befund 06: Körperzonen aus dem sichtbaren Umriss des eigenen Bildes (null = eingebaute Figur)
     val density = LocalDensity.current.density
@@ -250,7 +254,7 @@ fun PetScreen(vm: PetViewModel) {
     fun local(root: Offset) = root - sceneTopLeft
 
     val body = remember(footprint, headPoint, sceneSize, floating, mode) {
-        if (mode == Mode.GARDEN) null else SceneBody.of(footprint, headPoint, sceneSize.width.toFloat(), sceneSize.height.toFloat(), density, floating)
+        if (mode == Mode.GARDEN) null else SceneBody.of(footprint, headPoint, sceneSize.width.toFloat(), sceneSize.height.toFloat(), density, floating, hasTailSetting)
     }
     val bodyNow by rememberUpdatedState(body)
     /** Zone unter dem Finger: bei eigenen Bildern nur auf sichtbaren Pixeln. */
@@ -263,7 +267,7 @@ fun PetScreen(vm: PetViewModel) {
             val o = b.toScene(p); Offset(o.x / sceneSize.width, o.y / sceneSize.height)
         } else dirtSpotPositions(spotCount, seed)
     }
-    fun scratchAt(z: Zone) { val m = bodyNow?.map; vm.scratch(z, m?.let { map -> { a: Zone, t: Zone -> map.hint(a, t) } }) }
+    fun scratchAt(z: Zone) { val m = bodyNow?.map; vm.scratch(z, m?.let { map -> { a: Zone, t: Zone -> map.hint(a, t) } }, m?.zones ?: Zone.entries) }
 
     val sceneInteraction: Modifier = when (mode) {
         Mode.STROKE -> Modifier
@@ -430,7 +434,7 @@ fun PetScreen(vm: PetViewModel) {
                             )
                             Mode.STROKE -> {
                                 Text("Streicheln: langsam über ${s.name} wischen. Kraulen: Finger ruhig auf eine Stelle halten.", style = MaterialTheme.typography.bodySmall)
-                                ScratchSpots(s, vm.repo.zone)
+                                ScratchSpots(s, vm.repo.zone, body?.map?.zones ?: Zone.entries)
                             }
                             Mode.CLEAN -> {
                                 Text(cleanNextStep, style = MaterialTheme.typography.bodyMedium)
@@ -566,6 +570,15 @@ fun PetScreen(vm: PetViewModel) {
     if (showDungeon) DungeonDialog(vm, s, sprite, onClose = { showDungeon = false })
     if (showShop) ShopDialog(vm, s, onClose = { showShop = false })
     if (showBook) CollectionDialog(vm, s, sprite, onClose = { showBook = false })
+    // Runde 3: Findet die App bei einem eigenen Bild keine Schwanzfläche, fragt sie einmal nach
+    val askTail = body != null && hasTailSetting == null && !body.map.tailAreaFound && !isEgg
+    if (askTail) androidx.compose.material3.AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Hat ${s.name} einen Schwanz?") },
+        text = { Text("Ich habe im Bild keinen Schwanz gefunden. Ohne Schwanz ist er nie die Lieblingsstelle zum Kraulen. Das lässt sich im Sammelbuch unter „Sitz“ ändern.") },
+        confirmButton = { TextButton(onClick = { vm.setHasTail(true) }) { Text("Ja, hat einen") } },
+        dismissButton = { TextButton(onClick = { vm.setHasTail(false) }) { Text("Nein, keinen") } },
+    )
     // Spielstand nicht lesbar: Pflege sperren, bis ausdrücklich entschieden wurde (Befund 21)
     if (saveLocked) RecoveryScreen(vm, onOtherPet = { showPets = true })
 }
@@ -818,14 +831,14 @@ private fun MiniStats(s: PetState) {
 
 /** Die sechs Kraulstellen: heute schon probierte sind durchgestrichen, die gefundene hat einen Stern. */
 @Composable
-fun ScratchSpots(s: PetState, zone: java.time.ZoneId) {
+fun ScratchSpots(s: PetState, zone: java.time.ZoneId, zones: List<Zone> = Zone.entries) {
     val now = System.currentTimeMillis()
     val today = PetEngine.epochDay(now, zone)
     val found = s.scratchFoundDay == today
     val tried = PetEngine.scratchTriedToday(s, now, zone)
-    val spots = Zone.entries.joinToString("  ·  ") { z ->
+    val spots = zones.joinToString("  ·  ") { z ->
         when {
-            found && z == Zone.favoriteOn(today, s.bornAt) -> "⭐ ${z.label}"
+            found && z == Zone.favoriteOn(today, s.bornAt, zones) -> "⭐ ${z.label}"
             z in tried -> "✗ ${z.label}"
             else -> z.label
         }

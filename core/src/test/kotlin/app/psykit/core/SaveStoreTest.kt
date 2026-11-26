@@ -101,6 +101,17 @@ class SaveStoreTest {
         assertEquals(listOf(3L, 2L, 1L), store.backups().map { it.savedAt })
     }
 
+    @Test fun differentBackupsWithSameTimestampAreAllKept() {
+        // V77-01: zwei verschiedene defekte Stände zur selben Zeit dürfen sich nicht überschreiben
+        val store = SaveStore(MemoryStore())
+        val k1 = store.backupCorrupt("p1", "{erster", 5L)
+        val k2 = store.backupCorrupt("p1", "{zweiter", 5L)
+        assertTrue(k1 != k2)
+        assertEquals(setOf("{erster", "{zweiter"), store.backups().map { it.raw }.toSet())
+        assertEquals(k1, store.backupCorrupt("p1", "{erster", 5L), "Gleicher Inhalt bleibt eine Sicherung")
+        assertEquals(2, store.backups().size)
+    }
+
     @Test fun currentPointingToDeletedPetIsRepairedWithoutNewEgg() {
         val kv = MemoryStore(mapOf("pet_ids" to "p1,pA", "current_pet" to "pGone", "state" to SaveStore.encode(egg()), "state_pA" to SaveStore.encode(egg("A"))))
         val store = SaveStore(kv)

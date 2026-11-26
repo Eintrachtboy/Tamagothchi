@@ -62,7 +62,10 @@ class SaveStore(private val kv: KeyValueStore) {
      */
     fun backupCorrupt(id: String, raw: String, now: Long): String {
         backups().firstOrNull { it.petId == id && it.raw == raw }?.let { return it.key }
-        val key = "$BACKUP_PREFIX${id}_$now"
+        // V77-01: anderer Inhalt mit gleicher Zeitmarke darf keine vorhandene Sicherung überschreiben
+        var t = now
+        while (kv.getString("$BACKUP_PREFIX${id}_$t") != null) t++
+        val key = "$BACKUP_PREFIX${id}_$t"
         kv.write { put(key, raw) }
         return key
     }

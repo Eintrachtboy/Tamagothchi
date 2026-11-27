@@ -238,6 +238,8 @@ fun PetScreen(vm: PetViewModel) {
     // ---------- Schlafen ----------
     var blanket by remember { mutableFloatStateOf(0f) }
     var light by remember { mutableFloatStateOf(1f) }
+    // Runde 22: Licht geht weich aus und an
+    val lightAnim by androidx.compose.animation.core.animateFloatAsState(light, androidx.compose.animation.core.tween(700), label = "licht")
     var hummed by remember { mutableStateOf(false) }
     var humming by remember { mutableStateOf(false) }
     fun startHumming() {
@@ -409,7 +411,7 @@ fun PetScreen(vm: PetViewModel) {
                             if (s.poops > 0) add(CustomAccessibilityAction("Häufchen wegräumen") { vm.removePoop(); true })
                         }
                     },
-                    dim = if (mode == Mode.SLEEP) 1f - light else 0f,
+                    dim = if (mode == Mode.SLEEP) 1f - lightAnim else 0f,
                     floating = floating,
                     wear = Wearables.of(s, headPoint),
                     footprintIn = footprint,
@@ -461,7 +463,7 @@ fun PetScreen(vm: PetViewModel) {
                                 CleanOverlay(spots, foam, cleaned, cleanTick)
                                 toolPos?.let { p -> HandEmoji(when (tool) { 1 -> "🚿"; 2 -> "🧹"; else -> "🧽" }, p) }
                             }
-                            Mode.SLEEP -> Blanket(blanket)
+                            Mode.SLEEP -> Blanket(blanket, body?.mouth?.y)
                             else -> {}
                         }
                     },
@@ -479,8 +481,12 @@ fun PetScreen(vm: PetViewModel) {
                         Mode.FEED -> Text("Futter rechts zum Mund ziehen oder antippen. Zu viel Süßes macht träge.", style = MaterialTheme.typography.bodySmall, maxLines = 2)
                         Mode.STROKE -> ScratchSpots(s, vm.repo.zone, body?.map?.zones ?: Zone.entries)
                         Mode.CLEAN -> Text(cleanNextStep, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                        // Runde 22: Ablauf als Checkliste
                         Mode.SLEEP -> Text(
-                            if (s.sleeping) "${s.name} schläft. Psst!" else "Decke von unten hochziehen, rechts das Licht dimmen.",
+                            if (s.sleeping) "💤 ${s.name} schläft. Psst!"
+                            else (if (blanket >= 0.8f) "✅" else "☐") + " Decke hochziehen · " +
+                                (if (light <= 0.3f) "✅" else "☐") + " Licht aus · " +
+                                (if (hummed) "✅" else "🎵") + " Schlaflied (freiwillig)",
                             style = MaterialTheme.typography.bodySmall, maxLines = 2,
                         )
                         else -> {}
@@ -658,14 +664,16 @@ private fun CleanOverlay(spots: List<Offset>, foam: FloatArray, cleaned: Boolean
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.Blanket(progress: Float) {
+private fun androidx.compose.foundation.layout.BoxScope.Blanket(progress: Float, mouthY: Float? = null) {
     if (progress <= 0.01f) {
         Text("⬆️ Decke hochziehen", fontWeight = FontWeight.Bold, color = Color(0xFF5B3FA6),
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp).alpha(0.8f))
         return
     }
     Canvas(Modifier.fillMaxSize()) {
-        val top = size.height * (1f - 0.62f * progress)
+        // Runde 22: Decke endet knapp unter dem Mund, Kopf und Gesicht bleiben sichtbar
+        val stop = ((mouthY ?: (size.height * 0.5f)) + size.height * 0.06f).coerceIn(size.height * 0.3f, size.height * 0.85f)
+        val top = size.height - (size.height - stop) * progress
         drawRoundRect(
             Brush.verticalGradient(listOf(Color(0xFF8C7BE0), Color(0xFF5B4BB8)), startY = top, endY = size.height),
             topLeft = Offset(size.width * 0.12f, top),
@@ -796,9 +804,9 @@ private fun CareTray(
                 slot("Fertig", false, onDone) { Text("✔️", fontSize = 20.sp) }
             }
             Mode.SLEEP -> if (s.sleeping) slot("Wecken", false, onWake) { Text("☀️", fontSize = 22.sp) } else {
-                // Licht in Stufen dimmen statt Schieberegler (passt in die schmale Leiste)
-                slot("Licht heller", light >= 0.95f, { onLight((light + 0.3f).coerceAtMost(1f)) }) { Text("💡", fontSize = 20.sp) }
-                slot("Licht dunkler", light <= 0.3f, { onLight((light - 0.3f).coerceAtLeast(0.1f)) }) { Text("🌑", fontSize = 20.sp) }
+                // Runde 22: ein Lichtschalter statt Dimmstufen
+                val off = light <= 0.3f
+                slot(if (off) "Licht an" else "Licht aus", off, { onLight(if (off) 1f else 0.15f) }) { Text(if (off) "🌙" else "💡", fontSize = 22.sp) }
                 slot("Schlaflied summen", hummed, { if (!humming) onHum() }) { Text(if (humming) "…" else "🎵", fontSize = 20.sp) }
             }
             else -> {}

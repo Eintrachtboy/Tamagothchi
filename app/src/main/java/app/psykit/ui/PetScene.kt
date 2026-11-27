@@ -364,7 +364,16 @@ fun PetScene(
 
         // Licht aus / gedimmt: abdunkeln, Zzz
         val darkness = maxOf(dim, if (lightsOff) 0.35f else 0f)
-        if (darkness > 0f) Box(Modifier.fillMaxSize().background(Color(0xFF000018).copy(alpha = darkness * 0.75f)))
+        // Runde 22: Nachtlicht – Mitte (Figur) bleibt heller, die Ränder werden dunkel
+        if (darkness > 0f) Box(
+            Modifier.fillMaxSize().background(
+                androidx.compose.ui.graphics.Brush.radialGradient(
+                    0f to Color(0xFF000018).copy(alpha = darkness * 0.25f),
+                    0.45f to Color(0xFF000018).copy(alpha = darkness * 0.45f),
+                    1f to Color(0xFF000018).copy(alpha = darkness * 0.85f),
+                ),
+            ),
+        )
         if (sleeping) {
             Text(
                 "Z z z",

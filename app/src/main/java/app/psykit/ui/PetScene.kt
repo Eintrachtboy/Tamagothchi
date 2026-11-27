@@ -20,12 +20,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.runtime.remember
@@ -227,6 +230,9 @@ fun PetScene(
     val stars = remember { List(28) { Offset(Random.nextFloat(), Random.nextFloat() * 0.6f) } }
     val night = phase == DayPhase.NIGHT
     val lightsOff = sleeping && night
+    // Runde 24: Szenengröße, damit „Z z z“ am Kopf der Figur stehen kann
+    var sceneSz by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val densityZ = androidx.compose.ui.platform.LocalDensity.current.density
 
     Box(
         modifier
@@ -234,6 +240,7 @@ fun PetScene(
             .then(if (sceneHeight != null) Modifier.height(sceneHeight) else Modifier.fillMaxHeight())
             .clip(RoundedCornerShape(28.dp))
             .background(Brush.verticalGradient(skyColors(phase)))
+            .onSizeChanged { sceneSz = it }
             .then(interaction),
     ) {
         // Hintergrund: Himmel, Sonne/Mond, Sterne, Hügel, Boden
@@ -266,6 +273,7 @@ fun PetScene(
         dressed?.let { DecoLayer(it.deco) }
 
         // Figur: eigenes Bild (Standbild oder animiertes GIF/WebP) oder gezeichnete Standardfigur
+        var zzzAnchor: androidx.compose.ui.geometry.Offset? = null
         if (custom != null) {
             // Bewegung je nach Laune: fröhlich hüpft höher, traurig/krank hängt tiefer und ruhiger
             val amp = when {
@@ -281,6 +289,14 @@ fun PetScene(
             // (eigene Bilder haben oft unten einen leeren Rand).
             val own = rememberFootprint(if (footprintIn == null) custom else null)
             val footprint = footprintIn ?: own
+            // Runde 24: „Z z z“ rechts über der obersten sichtbaren Stelle der Figur
+            if (footprint != null && footprint.w > 0 && footprint.h > 0 && sceneSz.width > 0) {
+                val r = figureRect(sceneSz.width.toFloat(), sceneSz.height.toFloat(), densityZ, footprint, floating)
+                val rows = footprint.maskRows; val cols = footprint.maskCols
+                val topRow = (0 until rows).firstOrNull { y -> (0 until cols).any { x -> footprint.mask.getOrElse(y * cols + x) { false } } } ?: 0
+                val visTop = r.top + r.height * topRow / rows.coerceAtLeast(1)
+                zzzAnchor = androidx.compose.ui.geometry.Offset(r.left + r.width * 0.62f, visTop)
+            }
             val figure = Modifier
                 .fillMaxSize()
                 .padding(start = FIGURE_PAD_H, end = FIGURE_PAD_H, top = FIGURE_PAD_TOP, bottom = figurePadBottom(floating))
@@ -380,9 +396,14 @@ fun PetScene(
                 color = if (night) Color(0xFFE7DEFF) else Color(0xFF6A4FB8),
                 fontSize = (18 + zFloat * 8).sp,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .offset(x = 50.dp, y = (70 - zFloat * 30).dp)
+                modifier = (zzzAnchor?.let { a ->
+                    Modifier.align(Alignment.TopStart).offset {
+                        androidx.compose.ui.unit.IntOffset(
+                            a.x.toInt().coerceIn(0, (sceneSz.width - 60 * densityZ).toInt().coerceAtLeast(0)),
+                            (a.y - (28 + zFloat * 30) * densityZ).toInt().coerceAtLeast(0),
+                        )
+                    }
+                } ?: Modifier.align(Alignment.TopCenter).offset(x = 50.dp, y = (70 - zFloat * 30).dp))
                     .alpha(1f - zFloat * 0.7f),
             )
         }

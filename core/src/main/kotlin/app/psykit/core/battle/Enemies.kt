@@ -92,7 +92,7 @@ enum class EnemyKind(
 
 enum class BossKind(val label: String, val emoji: String, val world: Int, val level: Int, val body: Body, val weakness: AttackType, val info: String) {
     SOOT_KING("Rußkönig", "🤴", 1, 10, Body.EMBER, AttackType.FROST, "Ruft Staubflusen. Ab 50 % Rußwolke: Wucht wirbelt sie weg."),
-    MORLA("Pilzkönigin Morla", "🍄", 2, 16, Body.PLANT, AttackType.FIRE, "Pflanzt heilende Pilze. Später Sporensturm und Wurzelgriff."),
+    MORLA("Pilzkönigin Morla", "🍄", 2, 16, Body.PLANT, AttackType.FIRE, "Pflanzt heilende Pilze – besiege sie zuerst, solange einer lebt, wirkt der Sporensturm. Später Wurzelgriff."),
     KLIRR("Klirr, die Gletscherkrabbe", "🦀", 3, 22, Body.ARMORED, AttackType.BLUNT, "3 Panzerschichten, Wucht bricht sie. Ohne Panzer doppelter Schaden."),
     FURNACE("Eisenofen", "🏭", 4, 30, Body.EMBER, AttackType.FROST, "Hitzeleiste steigt, bei 5 explodiert er. Frost kühlt ab."),
     NIGHTMARE("Der Albtraum", "🌑", 5, 40, Body.GHOST, AttackType.PSI, "Kopiert dich, wird zu deinem Schatten, vertauscht deine Attacken."),

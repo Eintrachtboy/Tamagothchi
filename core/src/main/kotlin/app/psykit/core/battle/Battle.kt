@@ -20,7 +20,8 @@ data class BattleStats(val maxHp: Int, val attack: Int, val defense: Int, val sp
             fun f(x: Int) = (x * form).toInt().coerceAtLeast(1)
             return BattleStats(
                 maxHp = f(20 + lv * 5 + stamina * 2),
-                attack = f(5 + lv * 2 + p.trainAtk * 2),
+                // Runde 19: Angriff wächst wie Psi mit 3 je Level (vorher 2), damit Krallen und Wucht mithalten
+                attack = f(5 + lv * 3 + p.trainAtk * 2),
                 defense = f(5 + lv * 2 + stamina / 2 + p.trainDef * 2),
                 speed = f(5 + lv * 2 + stamina + p.trainSpd * 2),
                 psi = f(8 + lv * 3 + p.trainPsi * 2),

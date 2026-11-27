@@ -164,14 +164,14 @@ class BalanceSimulation {
     /**
      * Dritte Messung: Wertentwicklung. Angriff wächst im Spiel mit 2·Level, Psi mit 3·Level (Battle.kt).
      * Varianten werden über Trainingspunkte nachgebildet (1 Training = +2 Wert), ohne Spielcode zu ändern:
-     * Angriff 2,5·Level = +Level/4 Training, Angriff 3·Level = +Level/2 Training.
+     * Seit Runde 19 wächst der Angriff im Spiel mit 3·Level; hier wird nur noch dieser Stand gemessen.
      * Trainingsstand „typisch“ = jeder Wert Level/2 Training (zusätzlich).
      */
     @Test fun simulateGrowth() {
         if (System.getenv("BALANCE") != "1") return
         val n = 80
         val types = AttackType.entries
-        val growth = listOf("Angriff 2·Lv (jetzt)" to 0.0, "Angriff 2,5·Lv" to 0.25, "Angriff 3·Lv" to 0.5)
+        val growth = listOf("Angriff 3·Lv (neu, Runde 19)" to 0.0)
         val training = listOf("ohne Training" to 0.0, "typisches Training (Lv/2 je Wert)" to 0.5)
         val floors = Floors.all.filter { !it.isDepth }
         val out = StringBuilder("# Balance: Wertentwicklung\n\n")
@@ -212,6 +212,34 @@ class BalanceSimulation {
         val file = File("build/balance-growth.md")
         file.parentFile.mkdirs()
         file.writeText(out.toString())
+        println(out)
+    }
+
+    /** Runde 19: Morla-Varianten vergleichen (Sporenheilung für Bosse, Sporensturm nur mit lebendem Pilz). */
+    @Test fun simulateMorla() {
+        if (System.getenv("BALANCE") != "1") return
+        val n = 200
+        val f = Floors.all.first { it.isBoss && it.world == 2 }
+        val av = available(f.index).filter { it.type != null }.sortedByDescending { it.power * it.hits }
+        val set = (listOfNotNull(av.firstOrNull { it.type == DungeonEngine.weakness(f) }) + av.filter { it.type != DungeonEngine.weakness(f) }.take(2)) + MoveId.DUCK
+        val keepHeal = BattleEngine.SPORE_HEAL_BOSS; val keepNeeds = BattleEngine.SPORE_STORM_NEEDS_SHROOM
+        val out = StringBuilder("# Morla-Varianten (Set: ${set.joinToString { it.label }}, $n Kämpfe)\n\n| KP | Heilung Boss | Sturm nur mit Pilz | ohne Training | typisches Training |\n|---|---|---|---|---|\n")
+        val keepHp = BattleEngine.MORLA_HP
+        for (hp in listOf(3.5, 3.0, 2.5, 2.0)) for (heal in listOf(0.15, 0.06)) for (needs in listOf(false, true)) {
+            BattleEngine.SPORE_HEAL_BOSS = heal; BattleEngine.SPORE_STORM_NEEDS_SHROOM = needs; BattleEngine.MORLA_HP = hp
+            val cells = listOf(0.0, 0.5).map { tr ->
+                val wins = (0 until n).count {
+                    val rng = Random(51_000L + it * 13L)
+                    val t = (f.level * tr).toInt()
+                    fight(set, f.level, DungeonEngine.encounter(f, RoomType.BOSS, rng), f.world, rng.nextLong()) { p -> p.copy(trainAtk = t, trainDef = t, trainSpd = t, trainPsi = t) }.won
+                }
+                wins * 100 / n
+            }
+            out.append("| ×$hp | ${(heal * 100).toInt()} % | ${if (needs) "ja" else "nein"} | ${cells[0]} | ${cells[1]} |\n")
+        }
+        BattleEngine.MORLA_HP = keepHp
+        BattleEngine.SPORE_HEAL_BOSS = keepHeal; BattleEngine.SPORE_STORM_NEEDS_SHROOM = keepNeeds
+        File("build/balance-morla.md").writeText(out.toString())
         println(out)
     }
 }

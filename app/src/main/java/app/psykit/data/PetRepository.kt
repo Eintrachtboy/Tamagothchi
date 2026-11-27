@@ -137,6 +137,12 @@ class PetRepository private constructor(context: Context) {
         result
     }
 
+    /** Runde 21 (Testmodus): Stand des aktiven Tierchens als Sicherung ablegen (in „Sicherungen“ sichtbar). */
+    fun backupActive(): String? = synchronized(lock) {
+        val id = _currentId.value
+        if (id in locked) null else store.backupCorrupt(id, SaveStore.encode(_state.value), System.currentTimeMillis())
+    }
+
     /** Neues Tierchen (Ei) anlegen und dorthin wechseln. */
     fun addPet(name: String): String = synchronized(lock) {
         addPetWith(PetState.newEgg(System.currentTimeMillis(), name.ifBlank { "Lumi" }))

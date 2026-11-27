@@ -1,5 +1,7 @@
 package app.psykit.ui
 
+import androidx.compose.foundation.clickable
+
 import app.psykit.sprites.ReportEntry.Status as ReportStatus
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -98,6 +100,7 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
     var packInfo by remember { mutableStateOf<String?>(null) }
     var showHelp by remember { mutableStateOf(false) }
     var showReport by remember { mutableStateOf(false) }
+    var showDebug by remember { mutableStateOf(false) }
     val report by vm.importReport.collectAsState()
     var confirmDelete by remember { mutableStateOf<String?>(null) }
     val packs = remember(spriteVersion) { vm.packs.list() }
@@ -193,6 +196,27 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
                 HorizontalDivider()
                 BackupsSection(vm)
                 HorizontalDivider()
+                // Runde 21: Versionsnummer; 7× tippen schaltet den Testmodus frei
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val prefs = remember { ctx.getSharedPreferences("psykit", android.content.Context.MODE_PRIVATE) }
+                val version = remember { runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "?" }
+                var debugOn by remember { mutableStateOf(prefs.getBoolean("debug_unlocked", false)) }
+                var taps by remember { mutableStateOf(0) }
+                Text(
+                    "Version $version" + if (!debugOn && taps in 3..6) " · noch ${7 - taps}× tippen" else "",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.clickable {
+                        if (!debugOn) {
+                            taps++
+                            if (taps >= 7) { debugOn = true; prefs.edit().putBoolean("debug_unlocked", true).apply(); vm.say("Testmodus freigeschaltet.") }
+                        }
+                    },
+                )
+                if (debugOn) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { showDebug = true }) { Text("🛠 Testmodus") }
+                    TextButton(onClick = { debugOn = false; taps = 0; prefs.edit().putBoolean("debug_unlocked", false).apply() }) { Text("ausblenden") }
+                }
+                HorizontalDivider()
                 if (!confirmReset) {
                     OutlinedButton(onClick = { confirmReset = true }) { Text("Neu anfangen …") }
                 } else {
@@ -207,6 +231,7 @@ fun SettingsDialog(vm: PetViewModel, s: PetState, onDismiss: () -> Unit) {
         confirmButton = { TextButton(onClick = onDismiss) { Text("Fertig") } },
     )
     if (showHelp) HelpDialog(onDismiss = { showHelp = false })
+    if (showDebug) DebugPanel(vm, onClose = { showDebug = false })
     if (showReport) ImportReportDialog(report, onDismiss = { showReport = false })
 }
 

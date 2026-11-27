@@ -34,6 +34,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+const val TEST_PET_NAME = "Test"
+
 class PetViewModel(app: Application) : AndroidViewModel(app) {
     val repo = PetRepository.get(app)
     var sprites = SpriteStore(app, repo.currentId.value)
@@ -330,7 +332,31 @@ class PetViewModel(app: Application) : AndroidViewModel(app) {
         _message.value = "Ein neues Ei für ${state.value.name}! Es schlüpft in etwa ${PetEngine.EGG_HATCH_MS / 1000} Sekunden."
     }
 
-    fun deletePet(id: String) {
+    // ---------- Runde 21: Testmodus ----------
+    private var debugBackupDone = mutableSetOf<String>()
+
+    /** Ist das aktive Tierchen das Test-Tierchen? */
+    fun isTestPet() = state.value.name == TEST_PET_NAME
+
+    /** Zum Test-Tierchen wechseln, bei Bedarf anlegen. */
+    fun useTestPet() {
+        val existing = repo.allPets().firstOrNull { it.second.name == TEST_PET_NAME }?.first
+        if (existing != null) switchPet(existing) else addPet(TEST_PET_NAME)
+        _message.value = "Testmodus: Test-Tierchen aktiv. Dein echtes Tierchen bleibt unverändert."
+    }
+
+    /** Änderung aus dem Testmodus. Beim echten Tierchen wird vorher einmal je Sitzung gesichert. */
+    fun debug(label: String, block: (PetState, Long) -> PetState) {
+        val id = repo.currentId.value
+        if (!isTestPet() && id !in debugBackupDone) {
+            repo.backupActive()
+            debugBackupDone += id
+        }
+        repo.update { s, now -> block(s, now) to Unit }
+        _message.value = "Testmodus: $label"
+    }
+
+        fun deletePet(id: String) {
         val app = getApplication<Application>()
         repo.deletePet(id)
         if (id != "p1") java.io.File(app.filesDir, "sprites_$id").deleteRecursively()

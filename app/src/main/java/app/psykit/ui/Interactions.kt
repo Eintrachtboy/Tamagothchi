@@ -35,7 +35,16 @@ fun petBoxPos(p: Offset, size: IntSize): Offset? {
  * Körperzonen eines eigenen Bildes in Szenen-Pixeln (Befund 06): verbindet die [BodyMap]
  * (Bildanteile) mit der Lage der Figur in der Szene ([figureRect]).
  */
-class SceneBody(val rect: androidx.compose.ui.geometry.Rect, val map: BodyMap) {
+class SceneBody(
+    val rect: androidx.compose.ui.geometry.Rect,
+    val map: BodyMap,
+    /** Runde 23: oberste und unterste Zeile mit sichtbaren Pixeln (Anteile 0..1 des Bildes). */
+    private val visTopFrac: Float = 0f,
+    private val visBottomFrac: Float = 1f,
+) {
+    /** Sichtbare Ober- und Unterkante der Figur in Szenen-Pixeln. */
+    val visibleTop: Float get() = rect.top + visTopFrac * rect.height
+    val visibleBottom: Float get() = rect.top + visBottomFrac * rect.height
     fun toImage(p: Offset) = BodyPoint((p.x - rect.left) / rect.width, (p.y - rect.top) / rect.height)
     fun toScene(b: BodyPoint) = Offset(rect.left + b.x * rect.width, rect.top + b.y * rect.height)
     fun zoneAt(p: Offset): Zone? = map.zoneAt(toImage(p))
@@ -49,7 +58,10 @@ class SceneBody(val rect: androidx.compose.ui.geometry.Rect, val map: BodyMap) {
         fun of(fp: Footprint?, head: HeadPoint, sceneW: Float, sceneH: Float, density: Float, floating: Boolean, hasTail: Boolean? = null): SceneBody? {
             if (fp == null || fp.w <= 0 || fp.h <= 0 || fp.mask.isEmpty() || sceneW <= 0f || sceneH <= 0f) return null
             val map = BodyMap(fp.maskCols, fp.maskRows, fp.mask, head.x, head.y, head.size, head.eyes, head.mouth, head.tail, hasTail, head.bodyWidth)
-            return SceneBody(figureRect(sceneW, sceneH, density, fp, floating), map)
+            val rows = (0 until fp.maskRows).filter { r -> (0 until fp.maskCols).any { c -> fp.mask[r * fp.maskCols + c] } }
+            val top = (rows.firstOrNull() ?: 0).toFloat() / fp.maskRows
+            val bottom = ((rows.lastOrNull() ?: (fp.maskRows - 1)) + 1).toFloat() / fp.maskRows
+            return SceneBody(figureRect(sceneW, sceneH, density, fp, floating), map, top, bottom)
         }
     }
 }

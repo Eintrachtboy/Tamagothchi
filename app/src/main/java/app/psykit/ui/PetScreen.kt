@@ -463,7 +463,10 @@ fun PetScreen(vm: PetViewModel) {
                                 CleanOverlay(spots, foam, cleaned, cleanTick)
                                 toolPos?.let { p -> HandEmoji(when (tool) { 1 -> "🚿"; 2 -> "🧹"; else -> "🧽" }, p) }
                             }
-                            Mode.SLEEP -> Blanket(blanket, body?.mouth?.y)
+                            // Runde 23: Decke bedeckt höchstens die unteren 40 % der sichtbaren Figur, das Gesicht bleibt frei
+                            Mode.SLEEP -> Blanket(blanket, body?.let { b ->
+                                maxOf(b.visibleTop + 0.6f * (b.visibleBottom - b.visibleTop), b.mouth.y + sceneSize.height * 0.04f)
+                            })
                             else -> {}
                         }
                     },
@@ -664,7 +667,7 @@ private fun CleanOverlay(spots: List<Offset>, foam: FloatArray, cleaned: Boolean
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.Blanket(progress: Float, mouthY: Float? = null) {
+private fun androidx.compose.foundation.layout.BoxScope.Blanket(progress: Float, mouthY: Float? = null /* Oberkante der Decke in Szenen-Pixeln */) {
     if (progress <= 0.01f) {
         Text("⬆️ Decke hochziehen", fontWeight = FontWeight.Bold, color = Color(0xFF5B3FA6),
             modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp).alpha(0.8f))
@@ -672,7 +675,7 @@ private fun androidx.compose.foundation.layout.BoxScope.Blanket(progress: Float,
     }
     Canvas(Modifier.fillMaxSize()) {
         // Runde 22: Decke endet knapp unter dem Mund, Kopf und Gesicht bleiben sichtbar
-        val stop = ((mouthY ?: (size.height * 0.5f)) + size.height * 0.06f).coerceIn(size.height * 0.3f, size.height * 0.85f)
+        val stop = (mouthY ?: (size.height * 0.56f)).coerceIn(size.height * 0.3f, size.height * 0.92f)
         val top = size.height - (size.height - stop) * progress
         drawRoundRect(
             Brush.verticalGradient(listOf(Color(0xFF8C7BE0), Color(0xFF5B4BB8)), startY = top, endY = size.height),

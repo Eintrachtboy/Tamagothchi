@@ -71,7 +71,12 @@ class SpriteStore(context: Context, val petId: String = "p1") {
 
     private fun loadAny(stage: Stage, v: SpriteVariant, exact: Boolean): Sprite? {
         val anim = animFile(stage, v)
-        if (anim.exists()) return Sprite(null, anim, exact)
+        if (anim.exists()) {
+            // V77-07: Animationen erst ab Android 9 (API 28); darunter das erste Bild als Standbild
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) return Sprite(null, anim, exact)
+            val still = runCatching { android.graphics.BitmapFactory.decodeFile(anim.path)?.asImageBitmap() }.getOrNull()
+            if (still != null) return Sprite(still, null, exact)
+        }
         return loadExact(stage, v)?.let { Sprite(it, null, exact) }
     }
 
@@ -152,9 +157,10 @@ class SpriteStore(context: Context, val petId: String = "p1") {
          */
         fun writeImage(dir: File, key: String, bytes: ByteArray): ImageResult {
             if (bytes.size > MAX_IMAGE_BYTES) return ImageResult.TooLarge(bytes.size.toLong(), MAX_IMAGE_BYTES.toLong())
-            val animated = isAnimated(bytes)
+            // V77-07: ohne ImageDecoder (vor API 28) wird eine Animation als Standbild übernommen
+            val animated = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P && isAnimated(bytes)
             if (animated) {
-                val ok = runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) is android.graphics.drawable.AnimatedImageDrawable }.getOrDefault(false)
+                val ok = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P && runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) is android.graphics.drawable.AnimatedImageDrawable }.getOrDefault(false)
                 if (ok) {
                     val written = runCatching {
                         val t = File(dir, "$key.anim.part")
@@ -221,7 +227,7 @@ class SpriteStore(context: Context, val petId: String = "p1") {
 
         /** Auf max. 768 px verkleinert dekodieren; mit Ersatzweg für große oder ungewöhnliche Dateien. */
         private fun decodeScaled(bytes: ByteArray): Bitmap? {
-            runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) runCatching {
                 return ImageDecoder.decodeBitmap(ImageDecoder.createSource(java.nio.ByteBuffer.wrap(bytes))) { d, info, _ ->
                     d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
                     val max = maxOf(info.size.width, info.size.height)

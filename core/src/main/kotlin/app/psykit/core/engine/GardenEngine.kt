@@ -49,7 +49,7 @@ object GardenEngine {
     const val SNAIL_FROM_HOUR = 7
     const val SNAIL_TO_HOUR = 23
     const val SNAIL_BITE_HOURS = 6L
-    const val COMPOST_PER_FERTILIZER = 3
+    const val COMPOST_PER_FERTILIZER = 2
 
     // ---------------- Zustand eines Beets ----------------
 

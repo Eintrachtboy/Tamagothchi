@@ -351,4 +351,16 @@ class DungeonTest {
         assertEquals(Shop.OFFER_MOVES + 1, m.shopMoves.size)
         assertTrue(m.shopMoves.any { Shop.price(MoveId.parse(it)!!) >= Shop.HIGHLIGHT_PRICE })
     }
+
+    @Test fun chargeMoveCountsOnceWhenFired() {
+        // Befund 12: Beim Beginn des Aufladens zählt nichts, beim Auslösen genau ein Einsatz
+        val p = pet(20, listOf(MoveId.ICICLE_SPEAR))
+        var st = BattleEngine.start(p, listOf(EnemySpec(EnemyKind.WOODLOUSE, level = 20)), FloorRule.NONE, 1, 3L)
+        st = BattleEngine.playRound(st, PetAction(MoveId.ICICLE_SPEAR, st.enemies.first().id))
+        if (st.charging != null) {
+            assertNull(st.usedMove, "Aufladen zählt noch nicht")
+            st = BattleEngine.playRound(st, PetAction(MoveId.BUMP, st.enemies.first().id))
+            assertEquals(MoveId.ICICLE_SPEAR, st.usedMove, "Auslösen zählt einmal")
+        }
+    }
 }

@@ -5,6 +5,9 @@ import app.psykit.core.save.KeyValueStore
 import app.psykit.core.save.LoadResult
 import app.psykit.core.save.SaveStore
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -48,8 +51,14 @@ class SaveStoreTest {
         // Jedes Feld aus v52 muss mit demselben Wert erhalten bleiben; neue Felder dürfen dazukommen.
         val before = Json.parseToJsonElement(fixture).jsonObject
         val after = Json.parseToJsonElement(SaveStore.encode(r.state)).jsonObject
+        // Neue Felder dürfen dazukommen (auch in verschachtelten Objekten); kein altes Feld darf fehlen oder sich ändern.
+        fun contains(old: JsonElement?, new: JsonElement?): Boolean = when {
+            old is JsonObject && new is JsonObject -> old.all { (k, v) -> contains(v, new[k]) }
+            old is JsonArray && new is JsonArray -> old.size == new.size && old.indices.all { contains(old[it], new[it]) }
+            else -> old == new
+        }
         before.forEach { (key, value) ->
-            assertEquals(value, after[key], "Feld „$key“ ist beim Lesen und erneuten Schreiben verloren gegangen oder verändert worden")
+            assertTrue(contains(value, after[key]), "Feld „$key“ ist beim Lesen und erneuten Schreiben verloren gegangen oder verändert worden")
         }
         assertEquals("Enko", r.state.name)
         assertTrue(r.state.run != null, "Laufender Dungeon-Lauf fehlt")
@@ -90,6 +99,17 @@ class SaveStoreTest {
         store.backupCorrupt("pX", "{a", 3L)
         assertEquals(3, store.backups().size)
         assertEquals(listOf(3L, 2L, 1L), store.backups().map { it.savedAt })
+    }
+
+    @Test fun differentBackupsWithSameTimestampAreAllKept() {
+        // V77-01: zwei verschiedene defekte Stände zur selben Zeit dürfen sich nicht überschreiben
+        val store = SaveStore(MemoryStore())
+        val k1 = store.backupCorrupt("p1", "{erster", 5L)
+        val k2 = store.backupCorrupt("p1", "{zweiter", 5L)
+        assertTrue(k1 != k2)
+        assertEquals(setOf("{erster", "{zweiter"), store.backups().map { it.raw }.toSet())
+        assertEquals(k1, store.backupCorrupt("p1", "{erster", 5L), "Gleicher Inhalt bleibt eine Sicherung")
+        assertEquals(2, store.backups().size)
     }
 
     @Test fun currentPointingToDeletedPetIsRepairedWithoutNewEgg() {

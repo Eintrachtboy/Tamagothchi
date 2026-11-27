@@ -120,30 +120,49 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
         val report = mutableListOf<ReportEntry>()
         fun role(t: Pair<app.psykit.core.model.Stage, SpriteVariant>) = "${t.first.displayName} · ${t.second.label}"
         var count = 0
+        var tooBig = false
         try {
             ctx.contentResolver.openInputStream(uri)?.use { input ->
                 ZipInputStream(input.buffered()).use { zip ->
                     var total = 0L
+                    // V77-05: Rest eines Eintrags lesen und mitzählen, höchstens bis knapp über die Gesamtgrenze
+                    fun drain(): Long {
+                        var n = 0L
+                        val buf = ByteArray(64 * 1024)
+                        while (total + n <= MAX_ZIP_BYTES) { val r = zip.read(buf); if (r < 0) break; n += r }
+                        return n
+                    }
+                    fun overLimit(base: String): Boolean {
+                        if (total <= MAX_ZIP_BYTES) return false
+                        tooBig = true
+                        notes += "Import abgebrochen bei $base: Paket entpackt größer als ${SpriteStore.mb(MAX_ZIP_BYTES)}. Das bisherige Paket bleibt unverändert."
+                        return true
+                    }
                     while (true) {
                         val e = zip.nextEntry ?: break
                         if (e.isDirectory) continue
                         val base = e.name.substringAfterLast('/').substringAfterLast('\\')
-                        if (e.name.contains("__MACOSX") || base.startsWith(".")) continue
+                        if (e.name.contains("__MACOSX") || base.startsWith(".")) { total += drain(); if (overLimit(base)) break; continue }
                         val ext = base.substringAfterLast('.', "").lowercase()
                         val isImage = ext in setOf("png", "webp", "gif", "jpg", "jpeg")
                         val target = if (isImage) SpriteNames.guess(base) else null
                         if (isImage && target == null) {
                             notes += "$base: Dateiname unbekannt (z. B. adult.webp oder baby_happy.webp)"
                             report += ReportEntry(base, null, ReportEntry.Status.REJECTED, if (e.size > 0) SpriteStore.mb(e.size) else "", listOf("Dateiname unbekannt, z. B. adult.webp oder baby_happy.webp"))
+                            total += drain()
+                            if (overLimit(base)) break
                             continue
                         }
-                        val bytes = SpriteStore.readLimited(zip, SpriteStore.MAX_IMAGE_BYTES)
+                        val budget = (MAX_ZIP_BYTES - total).coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+                        val bytes = SpriteStore.readLimited(zip, minOf(SpriteStore.MAX_IMAGE_BYTES, budget))
+                        if (bytes.size > budget) { total += bytes.size; overLimit(base); break }
                         if (bytes.size > SpriteStore.MAX_IMAGE_BYTES) {
-                            // Rest des Eintrags überspringen, um die echte Größe zu melden
-                            var actual = bytes.size.toLong()
-                            val buf = ByteArray(64 * 1024)
-                            while (true) { val n = zip.read(buf); if (n < 0) break; actual += n }
-                            total += actual
+                            // Rest des Eintrags überspringen (mitgezählt), um die echte Größe zu melden
+                            total += bytes.size
+                            val rest = drain()
+                            total += rest
+                            val actual = bytes.size.toLong() + rest
+                            if (overLimit(base)) break
                             if (target != null) failedKeys += SpriteStore.keyOf(target.first, target.second)
                             val r = ImageResult.TooLarge(actual, SpriteStore.MAX_IMAGE_BYTES.toLong())
                             notes += "$base: ${r.reason()}"
@@ -151,11 +170,7 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
                             continue
                         }
                         total += bytes.size
-                        if (total > MAX_ZIP_BYTES) {
-                            notes += "Ab $base nicht mehr gelesen: Paket größer als ${SpriteStore.mb(MAX_ZIP_BYTES)}"
-                            report += ReportEntry(base, target?.let(::role), ReportEntry.Status.REJECTED, SpriteStore.mb(bytes.size.toLong()), listOf("ab hier nicht mehr gelesen: Paket entpackt größer als ${SpriteStore.mb(MAX_ZIP_BYTES)}"))
-                            break
-                        }
+                        if (overLimit(base)) break
                         when {
                             base.equals("pack.json", ignoreCase = true) -> {
                                 val m = PackManifest.parse(bytes.decodeToString())
@@ -178,6 +193,7 @@ class CharacterPacks(context: Context, private val store: SpriteStore) {
                     }
                 }
             } ?: run { tmp.deleteRecursively(); return ImportOutcome(null, listOf("Datei konnte nicht geöffnet werden"), report) }
+            if (tooBig) { tmp.deleteRecursively(); return ImportOutcome(null, notes, report) }
             if (count == 0) { tmp.deleteRecursively(); return ImportOutcome(null, notes, report) }
 
             val name = manifest.name.ifBlank { fallbackName }

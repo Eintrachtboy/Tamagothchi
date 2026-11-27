@@ -30,8 +30,10 @@ class PetEngineTest {
 
     @Test fun eggHatches() {
         val egg = PetState.newEgg(at(12))
-        assertEquals(Stage.EGG, PetEngine.advance(egg, at(12, 1), zone).stage)
-        assertEquals(Stage.BABY, PetEngine.advance(egg, at(12, 3), zone).stage)
+        assertEquals(Stage.EGG, PetEngine.advance(egg, at(12) + PetEngine.EGG_HATCH_MS - 5_000L, zone).stage)
+        val baby = PetEngine.advance(egg, at(12) + PetEngine.EGG_HATCH_MS + 5_000L, zone)
+        assertEquals(Stage.BABY, baby.stage)
+        assertFalse(baby.hatchSeen, "Die Schlupf-Feier steht noch aus")
     }
 
     @Test fun needsDropOverTime() {

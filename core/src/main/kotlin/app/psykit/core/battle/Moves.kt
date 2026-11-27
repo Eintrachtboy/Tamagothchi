@@ -128,6 +128,11 @@ enum class MoveId(
         /** Stufe einer Attacke nach Einsätzen: ab 20 Stufe II, ab 60 Stufe III. */
         const val LEVEL2_USES = 20
         const val LEVEL3_USES = 60
+        const val LEVEL2_BONUS = 0.15
+        const val LEVEL3_BONUS = 0.30
+        fun bonusFor(level: Int) = when (level) { 3 -> LEVEL3_BONUS; 2 -> LEVEL2_BONUS; else -> 0.0 }
+        val LEVEL2_PERCENT get() = Math.round(LEVEL2_BONUS * 100).toInt()
+        val LEVEL3_PERCENT get() = Math.round(LEVEL3_BONUS * 100).toInt()
         fun levelFor(uses: Int) = when { uses >= LEVEL3_USES -> 3; uses >= LEVEL2_USES -> 2; else -> 1 }
         fun level(p: PetState, m: MoveId) = levelFor(p.moveUses[m.name] ?: 0)
 

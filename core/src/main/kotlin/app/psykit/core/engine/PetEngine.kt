@@ -1,6 +1,7 @@
 package app.psykit.core.engine
 
 import app.psykit.core.model.Effect
+import app.psykit.core.model.Difficulty
 import app.psykit.core.model.Food
 import app.psykit.core.model.Item
 import app.psykit.core.model.Plot
@@ -30,7 +31,8 @@ data class ActionResult(
  * [advance] simuliert die vergangene Zeit in 5-Minuten-Schritten nach.
  */
 object PetEngine {
-    const val EGG_HATCH_MINUTES = 2L
+    /** Runde 12 (Befund 28): Das Ei schlüpft nach so vielen Millisekunden (vorher 2 Minuten). */
+    const val EGG_HATCH_MS = 30_000L
     private const val STEP_MS = 5 * 60_000L
     private const val MAX_SIM_MS = 7 * 24 * 60 * 60_000L
     private const val MINUTE = 60_000L
@@ -97,7 +99,8 @@ object PetEngine {
 
     private fun tick(s0: PetState, minutes: Float, time: Long, zone: ZoneId): PetState {
         if (s0.stage == Stage.EGG) {
-            return if (time - s0.bornAt >= EGG_HATCH_MINUTES * MINUTE) s0.copy(stage = Stage.BABY) else s0
+            // hatchSeen = false: Die Oberfläche feiert das Schlüpfen einmal
+            return if (time - s0.bornAt >= EGG_HATCH_MS) s0.copy(stage = Stage.BABY, hatchSeen = false) else s0
         }
         val h = minutes / 60f
         // Glücksbringer außerhalb des Kampfs
@@ -258,6 +261,9 @@ object PetEngine {
     }
 
     /** K1 (vorläufige Werte): Kraulen bringt nur mit Abstand und bis zu einer Tagesgrenze Freude. */
+    /** Befund 32: Energie je Spielrunde und Mindestenergie zum Spielen. */
+    const val GAME_ENERGY = 5f
+    const val GAME_MIN_ENERGY = 10f
     const val SCRATCH_COOLDOWN_MS = 10_000L
     const val SCRATCH_REWARDS_PER_DAY = 20
 
@@ -357,18 +363,18 @@ object PetEngine {
     fun canPlay(s: PetState): ActionResult? {
         blocked(s)?.let { return it }
         if (s.sluggish) return ActionResult(s, "${s.name} ist von den Süßigkeiten noch zu träge zum Spielen.", false, Reaction.SLEEPY)
-        if (s.energy < 15f) return ActionResult(s, "${s.name} ist zu müde zum Spielen.", false, Reaction.SLEEPY)
+        if (s.energy < GAME_MIN_ENERGY) return ActionResult(s, "${s.name} ist zu müde zum Spielen.", false, Reaction.SLEEPY)
         if (s.satiety < 10f) return ActionResult(s, "${s.name} hat zu großen Hunger zum Spielen.", false)
         return null
     }
 
     /** Ergebnis eines Spiels. Gute Ergebnisse trainieren einen Kampfwert. */
-    fun gameResult(s: PetState, game: GameKind, score: Int, max: Int, bonusExp: Int = 0): ActionResult {
+    fun gameResult(s: PetState, game: GameKind, score: Int, max: Int, bonusExp: Int = 0, difficulty: Difficulty = Difficulty.NORMAL): ActionResult {
         canPlay(s)?.let { return it }
         val ratio = if (max <= 0) 0f else (score.toFloat() / max).coerceIn(0f, 1f)
         val train = when { ratio >= 0.99f -> 2; ratio >= 0.5f -> 1; else -> 0 }
         var ns = kind(s, 1f).copy(
-            energy = s.energy - 10f,
+            energy = s.energy - GAME_ENERGY,
             satiety = s.satiety - 5f,
             happiness = s.happiness + 5f + 10f * ratio,
             gamesWon = if (ratio >= 0.5f) s.gamesWon + 1 else s.gamesWon,
@@ -399,7 +405,10 @@ object PetEngine {
         val dust = raw.coerceAtMost(GAME_DUST_PER_DAY - already).coerceAtLeast(0)
         ns = ns.copy(stardust = ns.stardust + dust, stardustDay = day, stardustFromGames = already + dust)
         val dustMsg = if (dust > 0) " +$dust ✨" else if (already >= GAME_DUST_PER_DAY) " (Sternenstaub aus Spielen für heute aufgebraucht)" else ""
-        return withExp(ns, (3 + 8 * ratio).toInt() + bonusExp, msg + dustMsg, if (ratio >= 0.5f) Reaction.JUMP else Reaction.HAPPY)
+        // Schwer gibt etwas mehr EP (aufgerundet); Leicht und Mittel geben den normalen Fortschritt
+        val rawExp = 3 + 8 * ratio
+        val baseExp = if (difficulty.expFactor > 1f) kotlin.math.ceil(rawExp * difficulty.expFactor).toInt() else rawExp.toInt()
+        return withExp(ns, baseExp + bonusExp, msg + dustMsg, if (ratio >= 0.5f) Reaction.JUMP else Reaction.HAPPY)
     }
 
     /** Gartenbeeren für Sternenstaub verkaufen. */
@@ -495,7 +504,7 @@ object PetEngine {
 
     /** Begrüßung je nach Tageszeit, Laune und Vertrauen. */
     fun greeting(s: PetState, now: Long, tz: ZoneId): String {
-        if (s.stage == Stage.EGG) return "Ein Ei! Es schlüpft in ein paar Minuten …"
+        if (s.stage == Stage.EGG) return "Ein Ei! Gleich schlüpft etwas …"
         val n = s.name
         if (s.sleeping) return "$n schläft tief und fest."
         val base = when (DayPhase.at(now, tz)) {

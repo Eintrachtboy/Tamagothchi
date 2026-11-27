@@ -1,5 +1,12 @@
 package app.psykit.ui
 
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -87,6 +94,7 @@ import app.psykit.core.engine.LevelSystem
 import app.psykit.core.engine.PetEngine
 import app.psykit.core.model.Berry
 import app.psykit.core.model.Food
+import app.psykit.core.engine.GardenEngine
 import app.psykit.core.model.GameKind
 import app.psykit.core.model.PetState
 import app.psykit.core.model.Stage
@@ -105,16 +113,16 @@ enum class Mode(val icon: String, val label: String) {
 
 @Composable
 fun PetScreen(vm: PetViewModel) {
-    val s by vm.state.collectAsState()
-    val message by vm.message.collectAsState()
-    val stepsToday by vm.stepsToday.collectAsState()
-    val reaction by vm.reaction.collectAsState()
-    val floating by vm.floating.collectAsState()
-    val spriteVersion by vm.spriteVersion.collectAsState()
-    val packHead by vm.headPoint.collectAsState()
-    val headVersion by vm.headVersion.collectAsState()
-    val hasTailSetting by vm.hasTail.collectAsState()
-    val saveLocked by vm.currentLocked.collectAsState()
+    val s by vm.state.collectAsStateWithLifecycle()
+    val message by vm.message.collectAsStateWithLifecycle()
+    val stepsToday by vm.stepsToday.collectAsStateWithLifecycle()
+    val reaction by vm.reaction.collectAsStateWithLifecycle()
+    val floating by vm.floating.collectAsStateWithLifecycle()
+    val spriteVersion by vm.spriteVersion.collectAsStateWithLifecycle()
+    val packHead by vm.headPoint.collectAsStateWithLifecycle()
+    val headVersion by vm.headVersion.collectAsStateWithLifecycle()
+    val hasTailSetting by vm.hasTail.collectAsStateWithLifecycle()
+    val saveLocked by vm.currentLocked.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -215,7 +223,9 @@ fun PetScreen(vm: PetViewModel) {
         s.poops > 0 -> 2
         else -> -1
     }
-    LaunchedEffect(suggestedTool, cleanSession) { if (suggestedTool >= 0) tool = suggestedTool }
+    // Das Werkzeug wechselt erst, wenn der Finger abgehoben ist. Sonst würde die Dusche mitten im Wischen aktiv
+    // und spült den frischen Schaum sofort weg (zu großzügiges Wischen).
+    LaunchedEffect(suggestedTool, cleanSession, toolPos == null) { if (suggestedTool >= 0 && toolPos == null) tool = suggestedTool }
     val cleanNextStep = when {
         cleanTickNow < 0 -> ""
         spotCount == 0 && s.poops == 0 -> "${s.name} ist schon sauber."
@@ -390,7 +400,15 @@ fun PetScreen(vm: PetViewModel) {
                         sceneTopLeft = b.topLeft
                         sceneSize = it.size
                     },
-                    interaction = if (isEgg) Modifier else sceneInteraction,
+                    interaction = if (isEgg) Modifier else sceneInteraction.semantics {
+                        // Befund 05: Streicheln, Kraulen und Häufchen wegräumen auch per TalkBack (ohne Wischgesten)
+                        contentDescription = "${s.name}"
+                        customActions = buildList {
+                            add(CustomAccessibilityAction("Streicheln") { vm.stroke((PetEngine.STROKE_SLOW + PetEngine.STROKE_FAST) / 2f); true })
+                            (body?.map?.zones ?: Zone.entries).forEach { z -> add(CustomAccessibilityAction("Kraulen: ${z.label}") { scratchAt(z); true }) }
+                            if (s.poops > 0) add(CustomAccessibilityAction("Häufchen wegräumen") { vm.removePoop(); true })
+                        }
+                    },
                     dim = if (mode == Mode.SLEEP) 1f - light else 0f,
                     floating = floating,
                     wear = Wearables.of(s, headPoint),
@@ -432,6 +450,7 @@ fun PetScreen(vm: PetViewModel) {
                                     }
                                 },
                                 onFoodTap = { f -> vm.feed(f) },
+                                onEatBerry = { b -> vm.eatBerry(b) },
                             )
                         }
                         when (mode) {
@@ -476,18 +495,17 @@ fun PetScreen(vm: PetViewModel) {
                 GardenScene(
                     vm, s, sprite, gardenSeed, fertilizeMode,
                     onFertilized = { fertilizeMode = false },
-                    modifier = Modifier.onGloballyPositioned {
+                    modifier = Modifier.weight(1f).onGloballyPositioned {
                         val b = it.boundsInRoot()
                         sceneTopLeft = b.topLeft
                         sceneSize = it.size
                     },
+                    fixedHeight = null,
                 )
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    MessageText(message.ifEmpty { statusLine(s) })
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-                        Column(Modifier.padding(12.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GardenPanel(s, vm, gardenSeed, { gardenSeed = it }, fertilizeMode, { fertilizeMode = it })
-                        }
+                MessageText(message.ifEmpty { statusLine(s) })
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                    Column(Modifier.padding(10.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        GardenPanel(s, vm, gardenSeed, { gardenSeed = it }, fertilizeMode, { fertilizeMode = it })
                     }
                 }
             } else {
@@ -551,10 +569,12 @@ fun PetScreen(vm: PetViewModel) {
     }
 
     game?.let { g ->
+        // V77-04: Tierchen beim Start der Runde merken
+        val gamePetId = remember(g) { vm.currentPetId.value }
         GameDialog(
             kind = g, vm = vm, s = s, sprite = sprite,
-            onFinish = { score, max, bonus -> vm.finishGame(g, score, max, bonus); game = null },
-            onCancel = { game = null },
+            onFinish = { score, max, bonus, diff -> vm.finishGame(g, score, max, bonus, diff, gamePetId); game = null },
+            onCancel = { vm.cancelGame(); game = null },
         )
     }
     if (showStats) StatsDialog(s, onDismiss = { showStats = false })
@@ -572,6 +592,8 @@ fun PetScreen(vm: PetViewModel) {
         confirmButton = { TextButton(onClick = { vm.setHasTail(true) }) { Text("Ja, hat einen") } },
         dismissButton = { TextButton(onClick = { vm.setHasTail(false) }) { Text("Nein, keinen") } },
     )
+    // Befund 28: Schlupf-Feier, einmal
+    if (!s.hatchSeen && !isEgg) HatchCelebration(s.name) { vm.markHatchSeen() }
     // Spielstand nicht lesbar: Pflege sperren, bis ausdrücklich entschieden wurde (Befund 21)
     if (saveLocked) RecoveryScreen(vm, onOtherPet = { showPets = true })
 }
@@ -580,7 +602,7 @@ internal fun gameInfo(k: GameKind) = when (k) {
     GameKind.HIDE_SEEK -> "Dein Tierchen versteckt sich hinter einer von drei Wolken. Die Wolken mischen sich, du findest es."
     GameKind.MEMORY -> "Dreh Karten um und finde die passenden Psi-Symbole."
     GameKind.BUBBLES -> "Bring in ${BUBBLES_SECONDS} Sekunden so viele Seifenblasen wie möglich zum Platzen."
-    GameKind.BERRIES -> "Kipp dein Handy, damit dein Tierchen die fallenden Beeren fängt. Goldene Beeren geben Extra-EP."
+    GameKind.BERRIES -> "Fang die fallenden Beeren: Zieh dein Tierchen mit dem Finger oder kipp dein Handy (Wahl unten). Goldene Beeren geben Extra-EP."
     GameKind.REACTION -> "Tippe so schnell wie möglich, wenn dein Tierchen lila aufleuchtet. Bei rotem Leuchten nicht tippen!"
     GameKind.ECHO -> "Merk dir die Farbfolge und spiel sie nach. Jede Runde wird sie länger."
     GameKind.SHADOW -> "Erkenne am Schatten, was es ist."
@@ -702,7 +724,7 @@ private fun ModeBar(mode: Mode, onSelect: (Mode) -> Unit) {
 private fun CareTray(
     mode: Mode, s: PetState, dragging: Food?, tool: Int, onTool: (Int) -> Unit, onDone: () -> Unit,
     light: Float, onLight: (Float) -> Unit, humming: Boolean, hummed: Boolean, onHum: () -> Unit, onWake: () -> Unit,
-    onFoodStart: (Food, Offset) -> Unit, onFoodMove: (Offset) -> Unit, onFoodDrop: () -> Unit, onFoodTap: (Food) -> Unit,
+    onFoodStart: (Food, Offset) -> Unit, onFoodMove: (Offset) -> Unit, onFoodDrop: () -> Unit, onFoodTap: (Food) -> Unit, onEatBerry: (Berry) -> Unit,
 ) {
     if (mode != Mode.FEED && mode != Mode.CLEAN && mode != Mode.SLEEP) return
     val shape = RoundedCornerShape(18.dp)
@@ -726,7 +748,8 @@ private fun CareTray(
             ) { content() }
         }
         when (mode) {
-            Mode.FEED -> Food.entries.filter { it != Food.GARDEN || s.berryStock > 0 }.forEach { f ->
+            Mode.FEED -> {
+                Food.entries.filter { it != Food.GARDEN || s.berryStock > 0 }.forEach { f ->
                 var itemPos by remember { mutableStateOf(Offset.Zero) }
                 val badge = when (f) {
                     Food.GARDEN -> "×${s.berryStock}"
@@ -750,8 +773,20 @@ private fun CareTray(
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(f.emoji, fontSize = 24.sp, modifier = Modifier.alpha(if (dragging == f) 0.3f else 1f))
+                    if (f == Food.GARDEN) BerryIcon(Berry.BLUE, 28.dp, Modifier.alpha(if (dragging == f) 0.3f else 1f))
+                    else Text(f.emoji, fontSize = 24.sp, modifier = Modifier.alpha(if (dragging == f) 0.3f else 1f))
                     if (badge.isNotEmpty()) Text(badge, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopEnd))
+                }
+            }
+                // Vorrat aus dem Garten (nur Sorten, die du hast): antippen = naschen
+                // Blaubeeren sind schon als „Gartenbeeren“ oben (ziehen oder antippen)
+                Berry.entries.filter { it != Berry.BLUE && GardenEngine.count(s, it) > 0 }.forEach { b ->
+                    slot("${b.label} naschen", false, { onEatBerry(b) }) {
+                        Box(contentAlignment = Alignment.Center) {
+                            BerryIcon(b, 28.dp)
+                            Text("${GardenEngine.count(s, b)}", fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.BottomEnd))
+                        }
+                    }
                 }
             }
             Mode.CLEAN -> {
@@ -772,7 +807,7 @@ private fun CareTray(
 }
 
 private fun statusLine(s: PetState): String = when (s.stage) {
-    Stage.EGG -> "Ein Ei! Es schlüpft in ein paar Minuten …"
+    Stage.EGG -> "Ein Ei! Es schlüpft in etwa ${PetEngine.EGG_HATCH_MS / 1000} Sekunden …"
     else -> "${s.name} ${s.mood.label}."
 }
 

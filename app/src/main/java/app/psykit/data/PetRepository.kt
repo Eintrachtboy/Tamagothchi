@@ -122,13 +122,15 @@ class PetRepository private constructor(context: Context) {
         partnerId: String,
         partner: (PetState) -> PetState,
         current: (PetState, Long) -> Pair<PetState, T>,
+        /** V77-03: Das Besuchstier bekommt nur etwas, wenn der eigene Abschluss gültig war. */
+        applyPartner: (T) -> Boolean = { true },
     ): T = synchronized(lock) {
         val now = System.currentTimeMillis()
         val (next, result) = current(PetEngine.advance(_state.value, now, zone), now)
         val other = if (partnerId != _currentId.value && partnerId !in locked) readOk(partnerId) else null
         val writes = buildMap {
             if (_currentId.value !in locked) put(_currentId.value, next)
-            if (other != null && partnerId !in locked) put(partnerId, partner(PetEngine.advance(other, now, zone)))
+            if (other != null && partnerId !in locked && applyPartner(result)) put(partnerId, partner(PetEngine.advance(other, now, zone)))
         }
         if (writes.isNotEmpty()) store.writeAll(writes)
         _state.value = next
@@ -240,14 +242,18 @@ class PetRepository private constructor(context: Context) {
             val share = ((now - midnight).toDouble() / (now - lastAt)).coerceIn(0.0, 1.0)
             kotlin.math.round(delta * share).toLong()
         }
-        prefs.edit()
+        // Das Tierchen bekommt alle Schritte gutgeschrieben, nur die Tagesanzeige wird aufgeteilt.
+        // V77-02: Zählerstand, Tageswerte und Tierstand in einem Schreibvorgang, damit ein Prozessende
+        // dazwischen keine Schritte ohne Gutschrift verbraucht.
+        val next = if (delta > 0) PetEngine.addSteps(PetEngine.advance(_state.value, now, zone), delta) else null
+        val ed = prefs.edit()
             .putLong(KEY_LAST_COUNTER, counter)
             .putLong(KEY_LAST_SAMPLE_AT, now)
             .putString(KEY_STEPS_DAY, today)
             .putLong(KEY_STEPS_TODAY, stepsToday + todayDelta)
-            .apply()
-        // Das Tierchen bekommt alle Schritte gutgeschrieben, nur die Tagesanzeige wird aufgeteilt.
-        if (delta > 0) update { s, _ -> PetEngine.addSteps(s, delta) to Unit }
+        if (next != null) ed.putString(SaveStore.stateKey(_currentId.value), SaveStore.encode(next))
+        ed.commit()
+        if (next != null) _state.value = next
         _stepsToday.value = stepsToday + todayDelta
         delta
     }

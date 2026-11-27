@@ -221,6 +221,12 @@ object BattleEngine {
     const val BOSS_HP = 3.5
     const val BOSS_ATK = 1.25
     const val BOSS_DEF = 1.2
+    /** Runde 19 (Morla): Sporenpilz heilt Bosse um diesen Anteil (andere Gegner 15 %). */
+    internal var SPORE_HEAL_BOSS = 0.06
+    /** Runde 19 (Morla): Sporensturm vergiftet nur, solange ein Sporenpilz lebt. */
+    internal var SPORE_STORM_NEEDS_SHROOM = true
+    /** Runde 19 (Morla): KP-Faktor. Mit 3,5 war sie in der Simulation fast unschaffbar (0–8 %), 2,0 ergibt 42 % ohne, 85 % mit Training. */
+    internal var MORLA_HP = 2.0
     const val SET_BONUS = 5
 
     fun maxPsi(p: PetState) = (10 + p.trainPsi / 5).coerceAtMost(20)
@@ -240,7 +246,7 @@ object BattleEngine {
     }
 
     /** Später Bosse halten mehr aus, weil ihre Mechaniken leichter zu kontern sind. */
-    fun bossHp(b: BossKind) = when (b) { BossKind.SOOT_KING, BossKind.MORLA -> BOSS_HP; BossKind.NIGHTMARE -> BOSS_HP + 1.5; else -> BOSS_HP + 1.0 }
+    fun bossHp(b: BossKind) = when (b) { BossKind.MORLA -> MORLA_HP; BossKind.SOOT_KING -> BOSS_HP; BossKind.NIGHTMARE -> BOSS_HP + 1.5; else -> BOSS_HP + 1.0 }
 
     fun enemyFighter(spec: EnemySpec, id: Int): Fighter {
         val b = BattleStats.enemyBase(spec.level)
@@ -508,6 +514,9 @@ object BattleEngine {
             }
             else -> attackWith(st, m, a.target, emp, rng)
         }
+        // Befund 12: Eine Aufladeattacke zählt genau einmal. Beim Beginn des Aufladens wird noch nichts gezählt,
+        // erst beim Auslösen (oben im Zweig „st.charging“).
+        if (st.charging != null) st.usedMove = null
         st.psi = st.psi.coerceIn(0f, st.maxPsi.toFloat() + st.bonuses.startPsi)
     }
 
@@ -533,7 +542,7 @@ object BattleEngine {
             else -> listOf(possible.firstOrNull { it.id == targetId } ?: possible.first())
         }
         st.log += "${pet.name} setzt ${m.label} ein!"
-        val lvMult = when (level(st, m)) { 3 -> 1.3; 2 -> 1.15; else -> 1.0 }
+        val lvMult = 1.0 + MoveId.bonusFor(level(st, m))
         fun strike(v: Fighter, h: Int) {
                 if (!v.alive) return
                 // Treffer?
@@ -756,7 +765,7 @@ object BattleEngine {
     private fun trapCounter(st: BattleState, e: Fighter, rng: Random) {
         if (!st.trap || !e.alive || !st.pet.alive) return
         val m = MoveId.CLAW_TRAP
-        val lvMult = when (level(st, m)) { 3 -> 1.3; 2 -> 1.15; else -> 1.0 }
+        val lvMult = 1.0 + MoveId.bonusFor(level(st, m))
         val f = TypeChart.factor(AttackType.CLAW, e.body)
         val d = (hitRaw(st.pet, e, (m.power * lvMult).roundToInt(), AttackType.CLAW, rng) * f * bossTaken(st, e, false)).roundToInt().coerceAtLeast(1)
         st.trapHit = true
@@ -816,7 +825,7 @@ object BattleEngine {
                     else -> enemyHit(st, e, NORMAL_POWER, k.attackType, rng, "schnappt zu")
                 }
                 Trick.SPORE_HEAL -> {
-                    st.alive.forEach { heal(st, it, (it.maxHp * 0.15).roundToInt()) }
+                    st.alive.forEach { heal(st, it, (it.maxHp * (if (it.boss != null) SPORE_HEAL_BOSS else 0.15)).roundToInt()) }
                     enemyStatus(st, e, Status.POISON, 99)
                     st.log += "${e.name} verteilt Sporen: Gegner heilen sich, ${pet.name} ist vergiftet."
                 }
@@ -970,7 +979,7 @@ object BattleEngine {
         if (boss != null) {
             bossPhases(st)
             when (boss.boss) {
-                BossKind.MORLA -> if (st.bossPhase >= 2) addStatus(st, pet, Status.POISON, 99)
+                BossKind.MORLA -> if (st.bossPhase >= 2 && (!SPORE_STORM_NEEDS_SHROOM || st.alive.any { it.enemy == EnemyKind.SPORE_SHROOM })) addStatus(st, pet, Status.POISON, 99)
                 BossKind.KLIRR -> {
                     st.roundsWithoutBlunt++
                     if (st.bossPhase >= 3 && st.roundsWithoutBlunt >= 2 && boss.shells < 3) {

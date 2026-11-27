@@ -125,7 +125,7 @@ private fun maskOf(bmp: android.graphics.Bitmap): Triple<Int, Int, BooleanArray>
 
 internal fun footprintOf(sprite: Sprite): Footprint? = runCatching {
     val anim = sprite.animated
-    if (anim != null) {
+    if (anim != null && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
         var w = 0; var h = 0
         val bmp = ImageDecoder.decodeBitmap(ImageDecoder.createSource(anim)) { d, info, _ ->
             d.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
@@ -181,7 +181,8 @@ fun PetScene(
     showSign: Boolean = true,
     overlay: @Composable BoxScope.() -> Unit = {},
 ) {
-    val dressed = wear?.takeIf { stage != Stage.EGG && !it.empty }
+    // Befund 29: Getragene Accessoires (Kopf, Augen) verschwinden beim Schlafen, Raumdeko bleibt
+    val dressed = wear?.let { if (sleeping) it.copy(head = null, eyes = null) else it }?.takeIf { stage != Stage.EGG && !it.empty }
     val anim = rememberInfiniteTransition(label = "idle")
     val bob by anim.animateFloat(
         0f, 1f, infiniteRepeatable(tween(if (sleeping) 2600 else 1400), RepeatMode.Reverse), label = "bob",
@@ -299,14 +300,14 @@ fun PetScene(
             val animFile = custom.animated
             if (animFile != null) {
                 val drawable = remember(animFile, animFile.lastModified()) {
-                    runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(animFile)) }.getOrNull()
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(animFile)) }.getOrNull() else null
                 }
                 AndroidView(
                     factory = { ctx -> ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_CENTER } },
                     update = { iv ->
                         if (iv.drawable !== drawable) {
                             iv.setImageDrawable(drawable)
-                            (drawable as? AnimatedImageDrawable)?.start()
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) (drawable as? AnimatedImageDrawable)?.start()
                         }
                     },
                     modifier = figure,

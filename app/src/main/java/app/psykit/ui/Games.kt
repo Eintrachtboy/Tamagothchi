@@ -18,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -67,8 +68,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
+import app.psykit.core.engine.PetEngine
 import app.psykit.core.model.GameKind
+import app.psykit.core.model.GameTuning
+import app.psykit.core.model.Difficulty
 import app.psykit.core.model.Mood
 import app.psykit.core.model.PetState
 import app.psykit.core.model.Stage
@@ -83,20 +88,29 @@ import kotlin.random.Random
 /** Befund 02: eine Rundendauer für Hilfetext, Countdown und Schwierigkeitsverlauf der Seifenblasen. */
 const val BUBBLES_SECONDS = 30
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun GameDialog(
     kind: GameKind,
     vm: PetViewModel,
     s: PetState,
     sprite: Sprite?,
-    onFinish: (Int, Int, Int) -> Unit,
+    onFinish: (Int, Int, Int, Difficulty) -> Unit,
     onCancel: () -> Unit,
 ) {
     var result by remember { mutableStateOf<Triple<Int, Int, Int>?>(null) }
     // Befund 18/34: Startseite vor jeder Runde. 0 = Start, 1 = gewertete Runde, 2 = Ausprobieren (ohne Belohnung)
     var phase by remember { mutableStateOf(0) }
     var round by remember { mutableStateOf(0) }
+    var claimed by remember { mutableStateOf(false) }
     val firstTime = remember { kind.name !in s.gamesIntroSeen }
+    // Befund 34: „Zeig's mir“ läuft beim ersten Mal von selbst und lässt sich danach per Knopf zeigen
+    var showDemo by remember { mutableStateOf(firstTime) }
+    // Befund 19: Steuerung für Beerenfang, „Ziehen“ vorausgewählt, Wahl wird gemerkt
+    val gamePrefs = LocalContext.current.getSharedPreferences("psykit", Context.MODE_PRIVATE)
+    var berriesTilt by remember { mutableStateOf(gamePrefs.getBoolean("berries_tilt", false)) }
+    // Befund 20/23: Schwierigkeit je Spiel, gemerkt; im Spiel steigt sie zusätzlich mit den Runden
+    var difficulty by remember { mutableStateOf(Difficulty.parse(gamePrefs.getString("diff_${kind.name}", null))) }
     // In den Spielen immer dein Standardbild („Normal“) zeigen
     val sprite = remember(s.stage) { vm.sprites.load(s.stage, SpriteVariant.BASE) ?: sprite }
     // Vollbild im App-Fenster statt eigenem Dialog-Fenster, damit unten nichts unter der Navigationsleiste verschwindet
@@ -112,13 +126,28 @@ fun GameDialog(
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     val r = result
                     if (phase == 0) {
-                        Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
-                            PetIcon(sprite, s.stage, Mood.HAPPY, 120.dp)
+                        // V77-08: bei großer Schrift oder kleinem Display scrollt die Startseite, Knöpfe bleiben erreichbar
+                        Column(Modifier.align(Alignment.Center).fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (showDemo) GameDemo(kind, Modifier.padding(horizontal = 8.dp)) else PetIcon(sprite, s.stage, Mood.HAPPY, 120.dp)
                             Spacer(Modifier.height(12.dp))
                             if (firstTime) Text("Neu für ${s.name}!", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             Text(gameInfo(kind), textAlign = TextAlign.Center, style = MaterialTheme.typography.bodyLarge)
                             Spacer(Modifier.height(6.dp))
-                            Text("Zeit und Wertung starten erst mit „Spielen“.", style = MaterialTheme.typography.bodySmall)
+                            Text("Zeit und Wertung starten erst mit „Spielen“. Kostet ⚡ ${PetEngine.GAME_ENERGY.toInt()}.", style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = { showDemo = !showDemo }) { Text(if (showDemo) "Zeig's mir ausblenden" else "👀 Zeig's mir") }
+                            if (kind != GameKind.VISIT) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), modifier = Modifier.padding(top = 8.dp)) {
+                                Difficulty.entries.forEach { d ->
+                                    androidx.compose.material3.FilterChip(
+                                        selected = difficulty == d,
+                                        onClick = { difficulty = d; gamePrefs.edit().putString("diff_${kind.name}", d.name).apply() },
+                                        label = { Text("${d.emoji} ${d.label}") },
+                                    )
+                                }
+                            }
+                            if (kind == GameKind.BERRIES) androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), modifier = Modifier.padding(top = 8.dp)) {
+                                androidx.compose.material3.FilterChip(selected = !berriesTilt, onClick = { berriesTilt = false; gamePrefs.edit().putBoolean("berries_tilt", false).apply() }, label = { Text("✋ Ziehen") })
+                                androidx.compose.material3.FilterChip(selected = berriesTilt, onClick = { berriesTilt = true; gamePrefs.edit().putBoolean("berries_tilt", true).apply() }, label = { Text("📱 Neigen") })
+                            }
                             Spacer(Modifier.height(16.dp))
                             Button(onClick = { vm.markIntroSeen(kind); result = null; round++; phase = 1 }) { Text("▶ Spielen") }
                             // Besuch verändert zwei Tierchen; dort gibt es keine Übungsrunde
@@ -147,21 +176,22 @@ fun GameDialog(
                                 textAlign = TextAlign.Center,
                             )
                             Spacer(Modifier.height(16.dp))
-                            Button(onClick = { onFinish(r.first, r.second, r.third) }) { Text("Belohnung abholen") }
+                            // V77-04: Belohnung nur einmal, auch bei Doppeltipp
+                            Button(enabled = !claimed, onClick = { if (!claimed) { claimed = true; onFinish(r.first, r.second, r.third, difficulty) } }) { Text("Belohnung abholen") }
                         }
                     } else {
                         val done: (Int, Int, Int) -> Unit = { a, b, c -> result = Triple(a, b, c) }
                         // key(round): jede Runde startet frisch, Timer laufen erst ab hier
                         key(round) { when (kind) {
-                            GameKind.HIDE_SEEK -> HideSeekGame(sprite, s, done)
-                            GameKind.MEMORY -> MemoryGame(done)
-                            GameKind.BUBBLES -> BubblesGame(done)
-                            GameKind.BERRIES -> BerriesGame(sprite, s, done)
-                            GameKind.REACTION -> ReactionGame(sprite, s, done)
-                            GameKind.ECHO -> EchoGame(done)
-                            GameKind.SHADOW -> ShadowGame(done)
-                            GameKind.COOK -> CookGame(sprite, s, done)
-                            GameKind.CLOUDS -> CloudHopGame(sprite, s, done)
+                            GameKind.HIDE_SEEK -> HideSeekGame(sprite, s, difficulty, done)
+                            GameKind.MEMORY -> MemoryGame(difficulty, done)
+                            GameKind.BUBBLES -> BubblesGame(difficulty, done)
+                            GameKind.BERRIES -> BerriesGame(sprite, s, berriesTilt, difficulty, done)
+                            GameKind.REACTION -> ReactionGame(sprite, s, difficulty, done)
+                            GameKind.ECHO -> EchoGame(difficulty, done)
+                            GameKind.SHADOW -> ShadowGame(difficulty, done)
+                            GameKind.COOK -> CookGame(sprite, s, difficulty, done)
+                            GameKind.CLOUDS -> CloudHopGame(sprite, s, difficulty, done)
                             GameKind.VISIT -> VisitGame(vm, sprite, s, done)
                         } }
                     }
@@ -179,14 +209,14 @@ fun PetIcon(sprite: Sprite?, stage: Stage, mood: Mood, size: Dp, modifier: Modif
     when {
         anim != null -> {
             val drawable = remember(anim, anim.lastModified()) {
-                runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(anim)) }.getOrNull()
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) runCatching { ImageDecoder.decodeDrawable(ImageDecoder.createSource(anim)) }.getOrNull() else null
             }
             AndroidView(
                 factory = { ctx -> ImageView(ctx).apply { scaleType = ImageView.ScaleType.FIT_CENTER } },
                 update = { iv ->
                     if (iv.drawable !== drawable) {
                         iv.setImageDrawable(drawable)
-                        (drawable as? AnimatedImageDrawable)?.start()
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) (drawable as? AnimatedImageDrawable)?.start()
                     }
                 },
                 modifier = modifier.size(size),
@@ -200,7 +230,7 @@ fun PetIcon(sprite: Sprite?, stage: Stage, mood: Mood, size: Dp, modifier: Modif
 // ---------------------------------------------------------------- Wo steckt es?
 
 @Composable
-private fun HideSeekGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
+private fun HideSeekGame(sprite: Sprite?, s: PetState, difficulty: Difficulty, onDone: (Int, Int, Int) -> Unit) {
     val rounds = 5
     var round by remember { mutableIntStateOf(0) }
     var score by remember { mutableIntStateOf(0) }
@@ -225,12 +255,13 @@ private fun HideSeekGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -
         phase = "hide"
         delay(900)
         phase = "shuffle"
-        speed = (340 - round * 50).coerceAtLeast(150)
-        repeat(9 + round * 4) {
+        // Befund 23: Runde 1 und 2 langsam und mit wenigen Tauschvorgängen; steigt mit der Runde und der Schwierigkeit
+        speed = GameTuning.swapMs(difficulty, round)
+        repeat(GameTuning.swapCount(difficulty, round)) {
             val a = Random.nextInt(3); var b = Random.nextInt(3); if (b == a) b = (a + 1) % 3
             val ia = slot.indexOf(a); val ib = slot.indexOf(b)
             slot[ia] = b; slot[ib] = a
-            delay(speed.toLong() + 15)
+            delay(speed.toLong() + 40)
         }
         phase = "guess"
     }
@@ -247,16 +278,30 @@ private fun HideSeekGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -
             },
             textAlign = TextAlign.Center,
         )
-        Spacer(Modifier.height(24.dp))
-        BoxWithConstraints(Modifier.fillMaxWidth().height(240.dp)) {
+        Spacer(Modifier.weight(0.4f))
+        BoxWithConstraints(Modifier.fillMaxWidth().height(300.dp)) {
             val slotW = maxWidth / 3
             for (i in 0 until 3) {
-                val x by animateFloatAsState(slot[i].toFloat(), tween(speed), label = "cloud$i")
+                // Befund 23: Beim Tauschen läuft eine Wolke auf einem Bogen nach oben, die andere nach unten
+                val target = slot[i].toFloat()
+                val anim = remember { androidx.compose.animation.core.Animatable(target) }
+                var from by remember { mutableFloatStateOf(target) }
+                LaunchedEffect(target) {
+                    from = anim.value
+                    anim.animateTo(target, tween(speed))
+                    from = target
+                }
+                val x = anim.value
+                val frac = if (target != from) ((x - from) / (target - from)).coerceIn(0f, 1f) else 0f
+                // Gut sichtbarer Bogen: eine Wolke läuft nach oben, die andere nach unten (60 dp)
+                val arc = (kotlin.math.sin(frac * Math.PI).toFloat() * 60f) * (if (target > from) -1f else 1f)
                 val up = i == hidden && (phase == "show" || phase == "reveal")
                 val petDown by animateFloatAsState(if (up) 0f else 1f, tween(if (up) 400 else 800), label = "pet$i")
                 Box(
                     Modifier
-                        .offset(x = slotW * x, y = 20.dp)
+                        .offset(x = slotW * x, y = 60.dp + arc.dp)
+                        // die nach oben laufende Wolke liegt vorn, damit man sie beim Kreuzen erkennt
+                        .zIndex(if (arc < 0f) 2f else 1f)
                         .size(slotW, 210.dp)
                         .clickable(enabled = phase == "guess") {
                             picked = i
@@ -277,19 +322,13 @@ private fun HideSeekGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -
                     Canvas(Modifier.fillMaxWidth().height(120.dp).align(Alignment.BottomCenter).padding(horizontal = 4.dp)) {
                         val w = size.width; val h = size.height
                         val c = if (phase == "reveal" && i == picked && i != hidden) Color(0xFFFFD6D6) else Color.White
-                        drawCircle(c, w * 0.26f, Offset(w * 0.28f, h * 0.55f))
-                        drawCircle(c, w * 0.33f, Offset(w * 0.52f, h * 0.42f))
-                        drawCircle(c, w * 0.25f, Offset(w * 0.76f, h * 0.58f))
-                        drawRoundRect(
-                            c, topLeft = Offset(w * 0.06f, h * 0.5f), size = androidx.compose.ui.geometry.Size(w * 0.88f, h * 0.38f),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(h * 0.19f, h * 0.19f),
-                        )
-                        drawCircle(Color(0xFFB8D4F0), w * 0.33f, Offset(w * 0.52f, h * 0.42f), style = Stroke(3f))
+                        // gleiche flauschige Wolke wie im Zuhause
+                        drawFluffyCloud(Offset(w * 0.5f, h * 0.58f), minOf(w / 5.5f, h / 3.2f), alpha = 1f, tint = c)
                     }
                 }
             }
         }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.weight(0.6f))
         when (phase) {
             "show" -> Button(onClick = { go++ }) { Text("Mischen!") }
             "reveal" -> Button(onClick = { round++ }) { Text(if (round + 1 >= rounds) "Ergebnis" else "Nächste Runde") }
@@ -304,8 +343,8 @@ private val PSI_SYMBOLS = listOf("☾", "✦", "☯", "◈", "⚛", "✺", "✧"
 private val PSI_COLORS = listOf(Color(0xFF7B5CD6), Color(0xFF7B5CD6), Color(0xFF7B5CD6), Color(0xFF7B5CD6), Color(0xFF7B5CD6), Color(0xFF7B5CD6), Color(0xFF7B5CD6), Color(0xFF7B5CD6))
 
 @Composable
-private fun MemoryGame(onDone: (Int, Int, Int) -> Unit) {
-    val maxTries = 16
+private fun MemoryGame(difficulty: Difficulty, onDone: (Int, Int, Int) -> Unit) {
+    val maxTries = GameTuning.memoryTries(difficulty)
     val cards = remember { (PSI_SYMBOLS.indices + PSI_SYMBOLS.indices).shuffled() }
     val open = remember { mutableStateListOf<Int>() }
     val matched = remember { mutableStateListOf<Int>() }
@@ -360,7 +399,7 @@ private fun MemoryGame(onDone: (Int, Int, Int) -> Unit) {
 private class Bubble(var x: Float, var y: Float, val r: Float, val v: Float, val phase: Float)
 
 @Composable
-private fun BubblesGame(onDone: (Int, Int, Int) -> Unit) {
+private fun BubblesGame(difficulty: Difficulty, onDone: (Int, Int, Int) -> Unit) {
     val max = 35
     val bubbles = remember { ArrayList<Bubble>() }
     var popped by remember { mutableIntStateOf(0) }
@@ -380,8 +419,8 @@ private fun BubblesGame(onDone: (Int, Int, Int) -> Unit) {
                     spawn -= dt
                     if (spawn <= 0f) {
                         spawn = (0.6f - (BUBBLES_SECONDS - timeLeft) * 0.012f).coerceAtLeast(0.3f) + Random.nextFloat() * 0.2f
-                        val r = area.width * (0.045f + Random.nextFloat() * 0.035f)
-                        bubbles += Bubble(r + Random.nextFloat() * (area.width - 2 * r), area.height + r, r, area.height * (0.3f + (BUBBLES_SECONDS - timeLeft) * 0.008f + Random.nextFloat() * 0.25f), Random.nextFloat() * 6f)
+                        val r = area.width * (0.045f + Random.nextFloat() * 0.035f) * GameTuning.bubbleSize(difficulty)
+                        bubbles += Bubble(r + Random.nextFloat() * (area.width - 2 * r), area.height + r, r, area.height * (0.3f + (BUBBLES_SECONDS - timeLeft) * 0.008f + Random.nextFloat() * 0.25f) * GameTuning.bubbleSpeed(difficulty), Random.nextFloat() * 6f)
                     }
                     bubbles.forEach { it.y -= it.v * dt }
                     bubbles.removeAll { it.y < -it.r }
@@ -460,7 +499,7 @@ private fun BubblesGame(onDone: (Int, Int, Int) -> Unit) {
 private class Berry(var x: Float, var y: Float, val v: Float, val golden: Boolean)
 
 @Composable
-private fun BerriesGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) -> Unit) {
+private fun BerriesGame(sprite: Sprite?, s: PetState, useTilt: Boolean, difficulty: Difficulty, onDone: (Int, Int, Int) -> Unit) {
     val ctx = LocalContext.current
     val berries = remember { ArrayList<Berry>() }
     var caught by remember { mutableIntStateOf(0) }
@@ -472,15 +511,20 @@ private fun BerriesGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) ->
     var catcherX by remember { mutableFloatStateOf(0.5f) } // 0..1
     var tilt by remember { mutableFloatStateOf(0f) }
     var hasSensor by remember { mutableStateOf(false) }
+    // Befund 19: Im Ziehmodus wird der Sensor gar nicht angemeldet. Im Neigemodus gilt die Haltung beim Start als Mitte (Kalibrierung).
+    var baseline by remember { mutableStateOf<Float?>(null) }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(useTilt) {
         val sm = ctx.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val acc = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         val listener = object : SensorEventListener {
-            override fun onSensorChanged(e: SensorEvent) { tilt = e.values[0] }
+            override fun onSensorChanged(e: SensorEvent) {
+                val b = baseline ?: e.values[0].also { baseline = it }
+                tilt = e.values[0] - b
+            }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
         }
-        if (acc != null) { hasSensor = true; sm.registerListener(listener, acc, SensorManager.SENSOR_DELAY_GAME) }
+        if (useTilt && acc != null) { hasSensor = true; sm.registerListener(listener, acc, SensorManager.SENSOR_DELAY_GAME) }
         onDispose { sm.unregisterListener(listener) }
     }
 
@@ -492,14 +536,19 @@ private fun BerriesGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) ->
                 val dt = (now - last) / 1e9f; last = now
                 timeLeft = (timeLeft - dt).coerceAtLeast(0f)
                 // Kippen: Handy nach rechts geneigt -> x-Beschleunigung negativ -> nach rechts
-                catcherX = (catcherX - tilt * 0.12f * dt).coerceIn(0.08f, 0.92f)
+                // Neigen: Stärker kippen = schneller (leicht progressiv), kleine Wackler werden ignoriert
+                if (useTilt && hasSensor) {
+                    val t = if (kotlin.math.abs(tilt) < 0.4f) 0f else tilt
+                    val speedX = t * (0.35f + 0.04f * kotlin.math.abs(t))
+                    catcherX = (catcherX - speedX * dt).coerceIn(0.08f, 0.92f)
+                }
                 if (area.width > 0f) {
                     spawn -= dt
                     val elapsed = 45f - timeLeft
                     if (spawn <= 0f && timeLeft > 1.5f) {
-                        spawn = (0.75f - elapsed * 0.012f).coerceAtLeast(0.3f)
+                        spawn = (0.75f - elapsed * 0.012f).coerceAtLeast(0.3f) * GameTuning.berryGap(difficulty)
                         val g = Random.nextFloat() < 0.1f
-                        berries += Berry(0.06f + Random.nextFloat() * 0.88f, -0.05f, (0.36f + elapsed * 0.01f) * (if (g) 1.4f else 1f), g)
+                        berries += Berry(0.06f + Random.nextFloat() * 0.88f, -0.05f, (0.36f + elapsed * 0.01f) * GameTuning.berryFall(difficulty) * (if (g) 1.4f else 1f), g)
                         spawned++
                     }
                     val catchY = 0.86f
@@ -508,7 +557,7 @@ private fun BerriesGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) ->
                         val b = iter.next()
                         val before = b.y
                         b.y += b.v * dt
-                        if (before < catchY && b.y >= catchY && kotlin.math.abs(b.x - catcherX) < 0.085f) {
+                        if (before < catchY && b.y >= catchY && kotlin.math.abs(b.x - catcherX) < GameTuning.catcherHalfWidth(difficulty)) {
                             if (b.golden) golden++ else caught++
                             iter.remove()
                         } else if (b.y > 1.05f) iter.remove()
@@ -523,14 +572,20 @@ private fun BerriesGame(sprite: Sprite?, s: PetState, onDone: (Int, Int, Int) ->
 
     Column(Modifier.fillMaxSize()) {
         Text("Gefangen: ${caught + golden} · ✨ $golden · Zeit: ${timeLeft.roundToInt()} s", fontWeight = FontWeight.Bold)
-        Text(if (hasSensor) "Kipp das Handy nach links und rechts (oder zieh mit dem Finger)." else "Zieh mit dem Finger nach links und rechts.", style = MaterialTheme.typography.bodySmall)
+        Text(
+            if (useTilt && hasSensor) "Kipp das Handy nach links und rechts. Die Haltung beim Start ist die Mitte."
+            else if (useTilt) "Kein Neigungssensor gefunden: Zieh mit dem Finger nach links und rechts."
+            else "Zieh mit dem Finger nach links und rechts.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         Spacer(Modifier.height(8.dp))
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
                 .background(Brush.verticalGradient(listOf(Color(0xFFFFD9C2), Color(0xFFCDEBC0))), RoundedCornerShape(20.dp))
-                .pointerInput(Unit) {
-                    detectDragGestures { change, amount ->
+                // Ziehen nur im Ziehmodus; im Neigemodus gibt es keine Fingersteuerung
+                .pointerInput(useTilt) {
+                    if (!useTilt) detectDragGestures { change, amount ->
                         change.consume()
                         catcherX = (catcherX + amount.x / size.width).coerceIn(0.08f, 0.92f)
                     }

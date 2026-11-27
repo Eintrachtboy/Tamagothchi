@@ -55,6 +55,8 @@ import app.psykit.core.battle.MoveSource
 import app.psykit.core.battle.PetAction
 import app.psykit.core.battle.Potion
 import app.psykit.core.battle.TypeChart
+import app.psykit.core.battle.AttackType
+import app.psykit.core.battle.Body
 import app.psykit.core.dungeon.DungeonEngine
 import app.psykit.core.dungeon.DungeonRun
 import app.psykit.core.dungeon.Floors
@@ -119,7 +121,7 @@ fun DungeonDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () ->
                 Spacer(Modifier.height(6.dp))
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when {
-                        run == null && s.lastRun != null -> RunResultView(s, onOk = { vm.clearLastRun() })
+                        run == null && s.lastRun != null -> RunResultView(s, vm, onOk = { vm.clearLastRun() })
                         run == null -> FloorSelect(s, vm)
                         run.battle != null -> BattleView(vm, s, run.battle!!, sprite)
                         run.cards.isNotEmpty() -> CardView(vm, s, run)
@@ -140,20 +142,54 @@ fun DungeonDialog(vm: PetViewModel, s: PetState, sprite: Sprite?, onClose: () ->
 @Composable
 private fun FloorSelect(s: PetState, vm: PetViewModel) {
     var info by remember { mutableStateOf(false) }
+    var types by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val blocker = DungeonEngine.cannotEnter(s, s.dungeonProgress.coerceAtMost(Floors.DEPTH_START - 1))
         if (blocker != null) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
             Text("⚠️ $blocker", Modifier.padding(12.dp).fillMaxWidth(), fontWeight = FontWeight.Bold)
         }
-        Text("Zum Betreten: 1 🗝️ Schlüssel, mindestens 30 ⚡ Energie und 40 Gesundheit, und das Tierchen muss wach sein.", style = MaterialTheme.typography.bodySmall)
-        OutlinedButton(onClick = { info = !info }) { Text(if (info) "Regeln ausblenden" else "Wie funktioniert der Dungeon?") }
+        // Übersicht: nächste Ebene direkt starten, nur die aktuelle Welt ist aufgeklappt
+        val next = Floors.all.firstOrNull { it.index == s.dungeonProgress }
+        val activeWorld = next?.world ?: World.entries.last().n
+        var openWorld by remember { mutableStateOf(activeWorld) }
+        if (next != null && DungeonEngine.unlocked(s, next.index)) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+            Row(Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("▶ Weiter: ${World.of(next.world).emoji} ${next.code} ${next.name}", fontWeight = FontWeight.Bold)
+                    Text("Level ${next.level}" + if (next.rule.name != "NONE") " · ${next.rule.label}" else "", style = MaterialTheme.typography.bodySmall)
+                }
+                Button(onClick = {
+                    val why = DungeonEngine.cannotEnter(s, next.index)
+                    if (why != null) vm.say(why) else vm.enterDungeon(next.index)
+                }) { Text("Los") }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Eintritt: 🗝️ 1 · ⚡ mind. ${DungeonEngine.MIN_ENERGY_TO_ENTER.toInt()} (kostet ${DungeonEngine.ENTRY_ENERGY.toInt()}, je Raum ${DungeonEngine.ROOM_ENERGY.toInt()}, in Hitze doppelt) · ❤️ 40 · wach", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+            TextButton(onClick = { info = !info }) { Text(if (info) "Regeln zu" else "ℹ️ Regeln") }
+            TextButton(onClick = { types = !types }) { Text(if (types) "Typen zu" else "📊 Typen") }
+        }
         if (info) DungeonRules()
+        if (types) TypeMatrix()
         World.entries.forEach { w ->
+            val floors = Floors.all.filter { it.world == w.n }
+            val doneCount = floors.count { it.index < s.dungeonProgress }
+            val isOpen = openWorld == w.n
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)) {
                 Column(Modifier.padding(12.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     val set = Item.completeSets(s).contains(w.n)
-                    Text("${w.emoji} Welt ${w.n}: ${w.label}" + if (set) " · ${Item.setTitle(w.n)}" else "", fontWeight = FontWeight.Bold)
-                    Floors.all.filter { it.world == w.n }.forEach { f ->
+                    val anyOpen = floors.any { DungeonEngine.unlocked(s, it.index) }
+                    Row(
+                        Modifier.fillMaxWidth().clickable { openWorld = if (isOpen) -1 else w.n },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            (if (!anyOpen) "🔒 " else "") + "${w.emoji} Welt ${w.n}: ${w.label}" + if (set) " · ${Item.setTitle(w.n)}" else "",
+                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f),
+                        )
+                        Text("$doneCount/${floors.size} ✓  " + if (isOpen) "▲" else "▼", style = MaterialTheme.typography.labelMedium)
+                    }
+                    if (isOpen) floors.forEach { f ->
                         val open = DungeonEngine.unlocked(s, f.index)
                         val done = f.index < s.dungeonProgress
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -213,7 +249,7 @@ private fun DungeonRules() {
             Text("• Jede Ebene versteckt eine Attacke, die es nirgends zu kaufen gibt. Jeder Sieg über Wächter oder Boss gibt 40 % Chance, spätestens beim dritten Sieg gehört sie dir.", style = MaterialTheme.typography.bodySmall)
             Text("• Nach normalen Kämpfen und Elitekämpfen wählst du eine von drei Fundkarten: eine Attacke nur für diesen Lauf, auf einem 5. Platz. Überspringen gibt +${DungeonEngine.SKIP_CARD_DUST} ✨.", style = MaterialTheme.typography.bodySmall)
             Text("• Kombos: Manche Zustände und Attackentypen passen besonders gut zusammen. Probier aus, was passiert! Gefundene Kombos stehen im Sammelbuch.", style = MaterialTheme.typography.bodySmall)
-            Text("• Attacken werden mit Übung besser: nach ${MoveId.LEVEL2_USES} Einsätzen ★ (+15 %), nach ${MoveId.LEVEL3_USES} ★★ (+30 % und ein Extra).", style = MaterialTheme.typography.bodySmall)
+            Text("• Attacken werden mit Übung besser: nach ${MoveId.LEVEL2_USES} Einsätzen ★ (+${MoveId.LEVEL2_PERCENT} %), nach ${MoveId.LEVEL3_USES} ★★ (+${MoveId.LEVEL3_PERCENT} % und ein Extra). Eine neue Stufe gilt ab dem nächsten Kampf.", style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -390,7 +426,7 @@ private fun BridgeView(vm: PetViewModel, run: DungeonRun) {
 }
 
 @Composable
-private fun RunResultView(s: PetState, onOk: () -> Unit) {
+private fun RunResultView(s: PetState, vm: PetViewModel, onOk: () -> Unit) {
     val r = s.lastRun ?: return
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(if (!r.won) "💤" else if (r.cleared) "🏆" else "🎒", fontSize = 64.sp)
@@ -399,6 +435,21 @@ private fun RunResultView(s: PetState, onOk: () -> Unit) {
         r.items.mapNotNull { Item.parse(it) }.forEach { Text("${it.emoji} ${it.label} (${it.rarity.label}): ${it.bonusText}", style = MaterialTheme.typography.bodySmall) }
         r.moves.mapNotNull { MoveId.parse(it) }.forEach {
             Text(if (it.source is MoveSource.Hidden) "❓ Versteckte Attacke entdeckt: ${it.label}!" else "Neue Attacke: ${it.label}", fontWeight = FontWeight.Bold, color = if (it.source is MoveSource.Hidden) Gold else Color.Unspecified)
+        }
+        // Befund 31: Fundattacken dieses Laufs, mit ✓ wenn eingesetzt und ⭐ zum Merken
+        if (r.found.isNotEmpty()) Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+            Column(Modifier.padding(12.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Fundattacken dieses Laufs", fontWeight = FontWeight.Bold)
+                r.found.mapNotNull { n -> MoveId.parse(n)?.let { n to it } }.forEach { (n, m) ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            (if (n in r.used) "✓ " else "– ") + m.label + if (n in r.used) " (eingesetzt)" else " (nicht eingesetzt)",
+                            Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                        )
+                        TextButton(onClick = { vm.toggleFavoriteFind(n) }) { Text(if (n in s.favoriteFinds) "⭐" else "☆") }
+                    }
+                }
+            }
         }
         Button(onClick = onOk) { Text("OK") }
     }
@@ -469,6 +520,23 @@ private fun BattleView(vm: PetViewModel, s: PetState, st: BattleState, sprite: S
             if (back.isNotEmpty()) EnemyRow(back, st, target, "hinten") { target = it }
             if (front.isNotEmpty()) EnemyRow(front, st, target, "vorne") { target = it }
             if (st.icicleWarning) Text("⚠️ Über dir knackt die Decke!", color = Color(0xFFE5484D), fontWeight = FontWeight.Bold)
+
+            // Runde 15: Typ-Matrix, Spalte des gewählten Gegners hervorgehoben
+            var showTypes by remember { mutableStateOf(false) }
+            TextButton(onClick = { showTypes = true }) { Text("📊 Was wirkt gegen " + (selected?.body?.let { "${it.emoji} ${it.label}" } ?: "wen") + "?") }
+            if (showTypes) androidx.compose.ui.window.Dialog(
+                onDismissRequest = { showTypes = false },
+                properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+            ) {
+                Card(Modifier.fillMaxWidth().padding(12.dp)) {
+                    Column(Modifier.padding(12.dp).verticalScroll(rememberScrollState())) {
+                        Text("Was wirkt gegen " + (selected?.body?.let { "${it.emoji} ${it.label}" } ?: "die Gegner") + "?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        TypeMatrix(selected?.body)
+                        TextButton(onClick = { showTypes = false }, modifier = Modifier.align(Alignment.End)) { Text("Schließen") }
+                    }
+                }
+            }
 
             // Kampfbericht: feste Höhe, springt ans Ende
             val logScroll = rememberScrollState()
@@ -561,7 +629,7 @@ private fun EnemyCard(e: Fighter, st: BattleState, selected: Boolean, modifier: 
         e.intent?.let { Text("${it.kind.emoji} ${it.label}", fontSize = 10.sp, maxLines = 1, fontWeight = FontWeight.Bold, color = if (it.kind.name == "BIG" || it.kind.name == "CHARGE") Color(0xFFE5484D) else MaterialTheme.colorScheme.onSurface) }
         Text(e.emoji, fontSize = if (e.boss != null) 52.sp else 36.sp)
         Text(e.name, fontSize = 11.sp, maxLines = 1, fontWeight = FontWeight.Bold)
-        Text((e.body?.label ?: "") + (e.role?.let { " · ${it.label}" } ?: "") + " · Lv ${e.level}", fontSize = 9.sp, maxLines = 1)
+        Text((e.body?.let { "${it.emoji} ${it.label}" } ?: "") + (e.role?.let { " · ${it.label}" } ?: "") + " · Lv ${e.level}", fontSize = 9.sp, maxLines = 1)
         LinearProgressIndicator(
             progress = { e.hpPct().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth().height(6.dp),
             color = if (e.hpPct() < 0.3f) Color(0xFFE5484D) else Color(0xFF46A758), trackColor = MaterialTheme.colorScheme.surfaceVariant, strokeCap = StrokeCap.Round,
@@ -576,5 +644,50 @@ private fun EnemyCard(e: Fighter, st: BattleState, selected: Boolean, modifier: 
         val statuses = e.status.keys.joinToString("") { it.emoji }
         if (statuses.isNotEmpty() || extra.isNotEmpty()) Text(statuses + " " + extra.joinToString(" "), fontSize = 11.sp, maxLines = 1)
         if (hit.isNotEmpty()) Text(hit.joinToString(" ") { if (it.heal) "+${it.amount}" else if (it.amount == 0) "verfehlt" else "-${it.amount}" }, fontSize = 11.sp, color = Color(0xFFE5484D), fontWeight = FontWeight.Bold)
+    }
+}
+
+/** Runde 15/16: Matrix Attackentyp × Gegnerkörper aus TypeChart, volle Breite. [highlight] hebt eine Spalte hervor. */
+@Composable
+internal fun TypeMatrix(highlight: Body? = null) {
+    fun color(f: Double) = when {
+        f >= 2.0 -> Color(0xFF2E9E5B)
+        f > 1.0 -> Color(0xFF8BD3A5)
+        f < 0.3 -> Color(0xFFE5484D)
+        f < 1.0 -> Color(0xFFF5A35C)
+        else -> Color(0x22888888)
+    }
+    fun factorText(f: Double) = "×" + if (f == f.toInt().toDouble()) f.toInt().toString() else f.toString().replace('.', ',')
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Box(Modifier.width(84.dp))
+            Body.entries.forEach { b ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(b.emoji, fontSize = 18.sp)
+                    Text(b.label, fontSize = 11.sp, maxLines = 1, textAlign = TextAlign.Center,
+                        fontWeight = if (b == highlight) FontWeight.Bold else FontWeight.Normal,
+                        color = if (b == highlight) Gold else Color.Unspecified)
+                }
+            }
+        }
+        AttackType.entries.forEach { t ->
+            Row(Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("${t.emoji} ${t.label}", Modifier.width(84.dp), fontSize = 13.sp, maxLines = 1)
+                Body.entries.forEach { b ->
+                    val f = TypeChart.factor(t, b)
+                    Column(
+                        Modifier.weight(1f).padding(horizontal = 1.dp).height(42.dp)
+                            .background(color(f), RoundedCornerShape(8.dp))
+                            .then(if (b == highlight) Modifier.border(2.dp, Gold, RoundedCornerShape(8.dp)) else Modifier),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(TypeChart.symbol(f), fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                        Text(factorText(f), fontSize = 11.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
+        Text("++ sehr effektiv · + effektiv · · normal · − wenig · −− fast wirkungslos", fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
     }
 }
